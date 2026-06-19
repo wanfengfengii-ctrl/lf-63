@@ -112,3 +112,24 @@ class HarvestPlan(Base):
     tree = relationship("LacquerTree")
     incision = relationship("Incision")
     actual_harvest = relationship("HarvestBatch")
+
+
+class MaintenanceRecord(Base):
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tree_id = Column(Integer, ForeignKey("lacquer_trees.id"), nullable=False)
+    incision_id = Column(Integer, ForeignKey("incisions.id"))
+    maintenance_date = Column(Date, nullable=False)
+    project_type = Column(String(50), nullable=False)
+    quantity = Column(Float, default=0.0)
+    unit = Column(String(20))
+    unit_price = Column(Float, default=0.0)
+    total_cost = Column(Float, default=0.0)
+    labor_hours = Column(Float, default=0.0)
+    person_in_charge = Column(String(50))
+    remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    tree = relationship("LacquerTree")
+    incision = relationship("Incision")

@@ -40,6 +40,8 @@
               {% else %}
                 <span class="badge badge-info">待执行 ({{ days_left }}天)</span>
               {% endif %}
+            {% elif p.status == '执行中' %}
+              <span class="badge badge-warning">执行中</span>
             {% elif p.status == '已执行' %}
               <span class="badge badge-success">{{ p.status }}</span>
             {% elif p.status == '已过期' %}
@@ -53,6 +55,8 @@
             <form method="POST" action="/plans/{{ p.id }}/execute" class="inline-form">
               <button type="submit" class="btn btn-success btn-sm">执行采收</button>
             </form>
+            {% elif p.status == '执行中' %}
+            <a href="/harvests/new?plan_id={{ p.id }}" class="btn btn-primary btn-sm">继续录入</a>
             {% endif %}
             <a href="/plans/{{ p.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
             <form method="POST" action="/plans/{{ p.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该采收计划吗？');">

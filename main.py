@@ -60,11 +60,20 @@ def check_recovery_period_for_plan(db: Session, incision_id: int, plan_date: dat
 
 
 def check_abnormal_status(db: Session, incision_id: int) -> tuple:
-    last_observation = db.query(models.RecoveryObservation).filter(
+    incision = db.query(models.Incision).filter(models.Incision.id == incision_id).first()
+    if not incision:
+        return True, ""
+    last_incision_obs = db.query(models.RecoveryObservation).filter(
         models.RecoveryObservation.incision_id == incision_id
     ).order_by(models.RecoveryObservation.observation_date.desc()).first()
-    if last_observation and last_observation.is_abnormal:
-        return False, f"该割口最近一次恢复观察（{last_observation.observation_date.strftime('%Y-%m-%d')}）为异常状态，需先处理异常后才能计划采收"
+    if last_incision_obs and last_incision_obs.is_abnormal:
+        return False, f"该割口最近一次恢复观察（{last_incision_obs.observation_date.strftime('%Y-%m-%d')}）为异常状态，需先处理异常后才能计划采收"
+    last_tree_obs = db.query(models.RecoveryObservation).filter(
+        models.RecoveryObservation.tree_id == incision.tree_id,
+        models.RecoveryObservation.incision_id == None
+    ).order_by(models.RecoveryObservation.observation_date.desc()).first()
+    if last_tree_obs and last_tree_obs.is_abnormal:
+        return False, f"该漆树最近一次整树恢复观察（{last_tree_obs.observation_date.strftime('%Y-%m-%d')}）为异常状态，需先处理异常后才能计划采收"
     return True, ""
 
 
@@ -126,6 +135,72 @@ def update_harvest_plan_status(db: Session):
     db.commit()
 
 
+def get_cost_warnings(db: Session) -> dict:
+    high_cost_warnings = []
+    low_output_warnings = []
+    trees = db.query(models.LacquerTree).all()
+    for tree in trees:
+        tree_records = db.query(models.MaintenanceRecord).filter(
+            models.MaintenanceRecord.tree_id == tree.id
+        ).all()
+        tree_cost = sum(r.total_cost for r in tree_records)
+        tree_labor = sum(r.labor_hours for r in tree_records)
+        incisions = db.query(models.Incision).filter(models.Incision.tree_id == tree.id).all()
+        tree_yield = sum(inc.total_yield for inc in incisions)
+        if tree_cost > 0 and tree_yield > 0:
+            unit_cost = tree_cost / tree_yield
+            if unit_cost > 500:
+                high_cost_warnings.append({
+                    "tree_code": tree.tree_code,
+                    "tree_id": tree.id,
+                    "total_cost": round(tree_cost, 2),
+                    "total_yield": round(tree_yield, 2),
+                    "unit_cost": round(unit_cost, 2),
+                    "type": "tree"
+                })
+        elif tree_cost > 0 and tree_yield == 0:
+            low_output_warnings.append({
+                "tree_code": tree.tree_code,
+                "tree_id": tree.id,
+                "total_cost": round(tree_cost, 2),
+                "total_labor": round(tree_labor, 2),
+                "type": "tree"
+            })
+    incisions = db.query(models.Incision).all()
+    for inc in incisions:
+        inc_records = db.query(models.MaintenanceRecord).filter(
+            models.MaintenanceRecord.incision_id == inc.id
+        ).all()
+        inc_cost = sum(r.total_cost for r in inc_records)
+        inc_labor = sum(r.labor_hours for r in inc_records)
+        if inc_cost > 0 and inc.total_yield > 0:
+            unit_cost = inc_cost / inc.total_yield
+            if unit_cost > 500:
+                tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == inc.tree_id).first()
+                high_cost_warnings.append({
+                    "incision_code": inc.incision_code,
+                    "tree_code": tree.tree_code if tree else "未知",
+                    "incision_id": inc.id,
+                    "total_cost": round(inc_cost, 2),
+                    "total_yield": round(inc.total_yield, 2),
+                    "unit_cost": round(unit_cost, 2),
+                    "type": "incision"
+                })
+        elif inc_cost > 0 and inc.total_yield == 0:
+            tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == inc.tree_id).first()
+            low_output_warnings.append({
+                "incision_code": inc.incision_code,
+                "tree_code": tree.tree_code if tree else "未知",
+                "incision_id": inc.id,
+                "total_cost": round(inc_cost, 2),
+                "total_labor": round(inc_labor, 2),
+                "type": "incision"
+            })
+    high_cost_warnings.sort(key=lambda x: x["unit_cost"] if "unit_cost" in x else 0, reverse=True)
+    low_output_warnings.sort(key=lambda x: x["total_cost"], reverse=True)
+    return {"high_cost": high_cost_warnings[:10], "low_output": low_output_warnings[:10]}
+
+
 def recalculate_all_reminders(db: Session):
     update_harvest_plan_status(db)
 
@@ -173,6 +248,9 @@ async def index(request: Request, db: Session = Depends(get_db)):
     ready_count = sum(1 for r in harvest_reminders if r["status"] == "待采收")
     upcoming_plans = get_upcoming_harvest_plans(db, days=30)
     abnormal_warnings = get_abnormal_warnings(db)
+    cost_warnings = get_cost_warnings(db)
+    total_maintenance_cost = db.query(func.sum(models.MaintenanceRecord.total_cost)).scalar() or 0.0
+    total_labor_hours = db.query(func.sum(models.MaintenanceRecord.labor_hours)).scalar() or 0.0
     return templates.TemplateResponse("index.html", {
         "request": request,
         "tree_count": tree_count,
@@ -184,7 +262,10 @@ async def index(request: Request, db: Session = Depends(get_db)):
         "harvest_reminders": harvest_reminders[:10],
         "ready_count": ready_count,
         "upcoming_plans": upcoming_plans[:10],
-        "abnormal_warnings": abnormal_warnings[:10]
+        "abnormal_warnings": abnormal_warnings[:10],
+        "cost_warnings": cost_warnings,
+        "total_maintenance_cost": round(total_maintenance_cost, 2),
+        "total_labor_hours": round(total_labor_hours, 1)
     })
 
 
@@ -448,14 +529,26 @@ async def list_harvests(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/harvests/new", response_class=HTMLResponse)
-async def new_harvest_form(request: Request, db: Session = Depends(get_db)):
+async def new_harvest_form(request: Request, plan_id: Optional[int] = None, db: Session = Depends(get_db)):
     incisions = db.query(models.Incision).filter(models.Incision.status == "活跃").all()
     weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
     grades = ["特级", "一级", "二级", "三级"]
     today = date.today().strftime("%Y-%m-%d")
+    plan = None
+    form_data = None
+    if plan_id:
+        plan = db.query(models.HarvestPlan).filter(models.HarvestPlan.id == plan_id).first()
+        if plan:
+            form_data = {
+                "incision_id": plan.incision_id,
+                "harvest_date": plan.plan_date.strftime("%Y-%m-%d"),
+                "operator": plan.person_in_charge or "",
+                "remarks": plan.remarks or ""
+            }
     return templates.TemplateResponse("harvests/form.html", {
         "request": request, "harvest": None, "incisions": incisions,
-        "weathers": weathers, "grades": grades, "errors": {}, "today": today
+        "weathers": weathers, "grades": grades, "errors": {}, "today": today,
+        "form_data": form_data, "plan_id": plan_id
     })
 
 
@@ -469,7 +562,8 @@ async def create_harvest(
     quality_grade: Optional[str] = Form(None),
     weather_id: Optional[int] = Form(None),
     operator: Optional[str] = Form(None),
-    remarks: Optional[str] = Form(None)
+    remarks: Optional[str] = Form(None),
+    plan_id: Optional[int] = Form(None)
 ):
     errors = {}
     try:
@@ -496,7 +590,8 @@ async def create_harvest(
                 "incision_id": incision_id, "harvest_date": harvest_date,
                 "yield_amount": yield_amount, "quality_grade": quality_grade,
                 "weather_id": weather_id, "operator": operator, "remarks": remarks
-            }
+            },
+            "plan_id": plan_id
         })
     harvest = models.HarvestBatch(
         incision_id=incision_id, harvest_date=h_date, yield_amount=yield_amount,
@@ -504,6 +599,12 @@ async def create_harvest(
         operator=operator, remarks=remarks
     )
     db.add(harvest)
+    db.flush()
+    if plan_id:
+        plan = db.query(models.HarvestPlan).filter(models.HarvestPlan.id == plan_id).first()
+        if plan:
+            plan.actual_harvest_id = harvest.id
+            plan.status = "已执行"
     db.commit()
     recalculate_incision_stats(db, incision_id)
     recalculate_all_reminders(db)
@@ -1019,7 +1120,7 @@ async def edit_plan_form(request: Request, plan_id: int, db: Session = Depends(g
     trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
     incisions = db.query(models.Incision).all()
     methods = ["V字形割法", "一字形割法", "斜线割法", "弧形割法", "其他"]
-    statuses = ["待执行", "已执行", "已过期", "已取消"]
+    statuses = ["待执行", "执行中", "已执行", "已过期", "已取消"]
     return templates.TemplateResponse("plans/form.html", {
         "request": request, "plan": plan, "trees": trees, "incisions": incisions,
         "methods": methods, "statuses": statuses, "errors": {}, "today": date.today().strftime("%Y-%m-%d")
@@ -1058,7 +1159,7 @@ async def update_plan(
         trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
         incisions = db.query(models.Incision).all()
         methods = ["V字形割法", "一字形割法", "斜线割法", "弧形割法", "其他"]
-        statuses = ["待执行", "已执行", "已过期", "已取消"]
+        statuses = ["待执行", "执行中", "已执行", "已过期", "已取消"]
         return templates.TemplateResponse("plans/form.html", {
             "request": request, "plan": plan, "trees": trees, "incisions": incisions,
             "methods": methods, "statuses": statuses, "errors": errors, "today": date.today().strftime("%Y-%m-%d")
@@ -1091,9 +1192,8 @@ async def execute_plan(plan_id: int, db: Session = Depends(get_db)):
     plan = db.query(models.HarvestPlan).filter(models.HarvestPlan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="采收计划不存在")
-    plan.status = "已执行"
+    plan.status = "执行中"
     db.commit()
-    recalculate_all_reminders(db)
     return RedirectResponse(f"/harvests/new?plan_id={plan_id}", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -1101,7 +1201,7 @@ async def execute_plan(plan_id: int, db: Session = Depends(get_db)):
 async def get_plan_vs_actual(db: Session = Depends(get_db)):
     from datetime import datetime as dt
     plans = db.query(models.HarvestPlan).filter(
-        models.HarvestPlan.status.in_(["待执行", "已执行", "已过期"])
+        models.HarvestPlan.status.in_(["待执行", "执行中", "已执行", "已过期"])
     ).all()
     monthly_data = {}
     for plan in plans:
@@ -1168,6 +1268,12 @@ async def get_incision_options(tree_id: int, db: Session = Depends(get_db)):
         models.Incision.tree_id == tree_id,
         models.Incision.status == "活跃"
     ).all()
+    tree_abnormal_obs = db.query(models.RecoveryObservation).filter(
+        models.RecoveryObservation.tree_id == tree_id,
+        models.RecoveryObservation.incision_id == None,
+        models.RecoveryObservation.is_abnormal == True
+    ).order_by(models.RecoveryObservation.observation_date.desc()).first()
+    has_tree_abnormal = tree_abnormal_obs is not None
     result = []
     for inc in incisions:
         ok_abnormal, _ = check_abnormal_status(db, inc.id)
@@ -1178,4 +1284,4 @@ async def get_incision_options(tree_id: int, db: Session = Depends(get_db)):
             "method": inc.method,
             "is_abnormal": is_abnormal
         })
-    return JSONResponse({"incisions": result})
+    return JSONResponse({"incisions": result, "has_tree_abnormal": has_tree_abnormal})

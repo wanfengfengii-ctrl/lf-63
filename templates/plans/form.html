@@ -57,7 +57,7 @@
             {% endif %}
           </select>
           <div id="incision_warning" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px; font-size: 0.85rem; color: #856404;">
-            ⚠️ 该割口存在异常观察记录，需先处理异常后才能计划采收
+            ⚠️ 该割口或其所属漆树存在异常观察记录，需先处理异常后才能计划采收
           </div>
         </div>
         <div class="form-group">
@@ -140,6 +140,11 @@ function loadIncisionOptions() {
     .then(function(data) {
       var options = '<option value="">请选择割口</option>';
       var abnormalIncisionIds = [];
+      
+      if (data.has_tree_abnormal) {
+        warningDiv.style.display = 'block';
+        warningDiv.innerHTML = '⚠️ 该漆树存在整树异常观察记录，所有割口均不能计划采收，请先处理异常';
+      }
       
       data.incisions.forEach(function(inc) {
         var disabled = inc.is_abnormal ? 'disabled' : '';

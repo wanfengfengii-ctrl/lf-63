@@ -7,6 +7,14 @@
   <a href="/harvests" class="btn btn-outline">← 返回列表</a>
 </div>
 
+{% if plan_id %}
+<div class="card" style="border-left: 4px solid var(--info); margin-bottom: 1rem;">
+  <div class="card-body">
+    <p>📋 <strong>此采收来自采收计划，录入完成后计划将自动标记为"已执行"。</strong></p>
+  </div>
+</div>
+{% endif %}
+
 {% if errors %}
 <div class="form-errors">
   <strong>请修正以下错误：</strong>
@@ -28,6 +36,9 @@
 <div class="card">
   <div class="card-body">
     <form method="POST" action="{% if harvest %}/harvests/{{ harvest.id }}/edit{% else %}/harvests/new{% endif %}">
+      {% if plan_id %}
+      <input type="hidden" name="plan_id" value="{{ plan_id }}">
+      {% endif %}
       <div class="form-grid">
         <div class="form-group">
           <label>割口 <span class="required">*</span></label>

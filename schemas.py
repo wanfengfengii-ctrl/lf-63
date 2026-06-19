@@ -187,3 +187,43 @@ class HarvestPlan(HarvestPlanBase):
 
     class Config:
         from_attributes = True
+
+
+class MaintenanceBase(BaseModel):
+    tree_id: int
+    incision_id: Optional[int] = None
+    maintenance_date: date
+    project_type: str
+    quantity: Optional[float] = 0.0
+    unit: Optional[str] = None
+    unit_price: Optional[float] = 0.0
+    total_cost: Optional[float] = 0.0
+    labor_hours: Optional[float] = 0.0
+    person_in_charge: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class MaintenanceCreate(MaintenanceBase):
+    @field_validator("quantity", "unit_price", "total_cost", "labor_hours")
+    @classmethod
+    def non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("不能为负数")
+        return v
+
+
+class MaintenanceUpdate(MaintenanceBase):
+    @field_validator("quantity", "unit_price", "total_cost", "labor_hours")
+    @classmethod
+    def non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("不能为负数")
+        return v
+
+
+class Maintenance(MaintenanceBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
