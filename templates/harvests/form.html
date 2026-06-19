@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{% if harvest %}编辑采收{% else %}新增采收{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if harvest %}✏️ 编辑采收记录{% else %}➕ 新增采收记录{% endif %}</h1>
+  <a href="/harvests" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not incisions and not harvest %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+  <div class="card-body">
+    <p>⚠️ <strong>尚无活跃的割口记录，请先<a href="/incisions/new">创建割口记录</a>后再添加采收。</strong></p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if harvest %}/harvests/{{ harvest.id }}/edit{% else %}/harvests/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>割口 <span class="required">*</span></label>
+          <select name="incision_id" required>
+            {% set ns = namespace(selected=form_data.incision_id if form_data else (harvest.incision_id if harvest else '')) %}
+            <option value="">请选择割口</option>
+            {% for inc in incisions %}
+            <option value="{{ inc.id }}" {% if ns.selected|string == inc.id|string %}selected{% endif %}>
+              {{ inc.tree.tree_code }} - {{ inc.incision_code }} ({{ inc.method }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>采收日期 <span class="required">*</span></label>
+          <input type="date" name="harvest_date" required max="{{ today }}"
+            value="{{ form_data.harvest_date if form_data else (harvest.harvest_date.strftime('%Y-%m-%d') if harvest else today) }}">
+          {% if errors.harvest_date %}
+          <span class="error-text">{{ errors.harvest_date }}</span>
+          {% endif %}
+          {% if errors.recovery %}
+          <span class="error-text">{{ errors.recovery }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>出漆量（kg） <span class="required">*</span></label>
+          <input type="number" name="yield_amount" required step="0.01" min="0"
+            value="{{ form_data.yield_amount if form_data else (harvest.yield_amount if harvest else '') }}"
+            placeholder="如：0.25">
+          {% if errors.yield_amount %}
+          <span class="error-text">{{ errors.yield_amount }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>品质等级</label>
+          <select name="quality_grade">
+            {% set ns2 = namespace(selected=form_data.quality_grade if form_data else (harvest.quality_grade if harvest else '')) %}
+            <option value="">请选择</option>
+            {% for g in grades %}
+            <option value="{{ g }}" {% if ns2.selected == g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>天气条件</label>
+          <select name="weather_id">
+            {% set ns3 = namespace(selected=form_data.weather_id if form_data else (harvest.weather_id if harvest else '')) %}
+            <option value="">请选择</option>
+            {% for w in weathers %}
+            <option value="{{ w.id }}" {% if ns3.selected|string == w.id|string %}selected{% endif %}>
+              {{ w.record_date.strftime('%Y-%m-%d') }} - {{ w.weather_type or '' }} {{ w.temperature or '' }}{{ '°C' if w.temperature else '' }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>操作员</label>
+          <input type="text" name="operator" maxlength="50"
+            value="{{ form_data.operator if form_data else (harvest.operator if harvest else '') }}">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="采收过程中的其他说明...">{{ form_data.remarks if form_data else (harvest.remarks if harvest else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/harvests" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

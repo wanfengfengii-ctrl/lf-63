@@ -1,0 +1,157 @@
+from datetime import date, datetime
+from typing import Optional, List
+from pydantic import BaseModel, field_validator
+
+
+class TreeBase(BaseModel):
+    tree_code: str
+    species: Optional[str] = None
+    age: Optional[int] = None
+    location: Optional[str] = None
+    altitude: Optional[float] = None
+    soil_type: Optional[str] = None
+    planting_date: Optional[date] = None
+    status: Optional[str] = "正常"
+    remarks: Optional[str] = None
+
+
+class TreeCreate(TreeBase):
+    pass
+
+
+class TreeUpdate(TreeBase):
+    pass
+
+
+class Tree(TreeBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class IncisionBase(BaseModel):
+    tree_id: int
+    incision_code: str
+    position: str
+    height: Optional[float] = None
+    method: str
+    incision_date: date
+    recovery_days: Optional[int] = 7
+    status: Optional[str] = "活跃"
+    remarks: Optional[str] = None
+
+
+class IncisionCreate(IncisionBase):
+    pass
+
+
+class IncisionUpdate(IncisionBase):
+    pass
+
+
+class Incision(IncisionBase):
+    id: int
+    total_harvests: int = 0
+    total_yield: float = 0.0
+    avg_yield: float = 0.0
+
+    class Config:
+        from_attributes = True
+
+
+class HarvestBase(BaseModel):
+    incision_id: int
+    harvest_date: date
+    yield_amount: float
+    quality_grade: Optional[str] = None
+    weather_id: Optional[int] = None
+    operator: Optional[str] = None
+    remarks: Optional[str] = None
+
+    @field_validator("yield_amount")
+    @classmethod
+    def yield_must_be_non_negative(cls, v):
+        if v < 0:
+            raise ValueError("出漆量不能为负数")
+        return v
+
+
+class HarvestCreate(HarvestBase):
+    pass
+
+
+class HarvestUpdate(HarvestBase):
+    pass
+
+
+class Harvest(HarvestBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WeatherBase(BaseModel):
+    record_date: date
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
+    weather_type: Optional[str] = None
+    wind_speed: Optional[float] = None
+    remarks: Optional[str] = None
+
+
+class WeatherCreate(WeatherBase):
+    pass
+
+
+class WeatherUpdate(WeatherBase):
+    pass
+
+
+class Weather(WeatherBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class ObservationBase(BaseModel):
+    tree_id: int
+    observation_date: date
+    incision_id: Optional[int] = None
+    tree_condition: str
+    bark_healing: Optional[str] = None
+    sap_flow: Optional[str] = None
+    leaf_condition: Optional[str] = None
+    is_abnormal: Optional[bool] = False
+    treatment_suggestion: Optional[str] = None
+    observer: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class ObservationCreate(ObservationBase):
+    @field_validator("treatment_suggestion")
+    @classmethod
+    def check_treatment_when_abnormal(cls, v, info):
+        if info.data.get("is_abnormal") and not v:
+            raise ValueError("树体状态异常时必须填写处理建议")
+        return v
+
+
+class ObservationUpdate(ObservationBase):
+    @field_validator("treatment_suggestion")
+    @classmethod
+    def check_treatment_when_abnormal(cls, v, info):
+        if info.data.get("is_abnormal") and not v:
+            raise ValueError("树体状态异常时必须填写处理建议")
+        return v
+
+
+class Observation(ObservationBase):
+    id: int
+
+    class Config:
+        from_attributes = True

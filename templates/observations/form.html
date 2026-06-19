@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{% if observation %}编辑观察{% else %}新增观察{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if observation %}✏️ 编辑恢复观察{% else %}➕ 新增恢复观察{% endif %}</h1>
+  <a href="/observations" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not trees %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+  <div class="card-body">
+    <p>⚠️ <strong>尚无漆树档案，请先<a href="/trees/new">创建漆树档案</a>。</strong></p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if observation %}/observations/{{ observation.id }}/edit{% else %}/observations/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>漆树 <span class="required">*</span></label>
+          <select name="tree_id" required id="tree_select">
+            {% set ns = namespace(selected=form_data.tree_id if form_data else (observation.tree_id if observation else '')) %}
+            <option value="">请选择漆树</option>
+            {% for t in trees %}
+            <option value="{{ t.id }}" data-tree="{{ t.id }}" {% if ns.selected|string == t.id|string %}selected{% endif %}>{{ t.tree_code }} - {{ t.location or '' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>观察日期 <span class="required">*</span></label>
+          <input type="date" name="observation_date" required max="{{ today }}"
+            value="{{ form_data.observation_date if form_data else (observation.observation_date.strftime('%Y-%m-%d') if observation else today) }}">
+          {% if errors.observation_date %}
+          <span class="error-text">{{ errors.observation_date }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>关联割口</label>
+          <select name="incision_id" id="incision_select">
+            {% set ns2 = namespace(selected=form_data.incision_id if form_data else (observation.incision_id if observation else '')) %}
+            <option value="">无</option>
+            {% for inc in incisions %}
+            <option value="{{ inc.id }}" data-tree="{{ inc.tree_id }}" {% if ns2.selected|string == inc.id|string %}selected{% endif %}>
+              {{ inc.tree.tree_code }} - {{ inc.incision_code }} ({{ inc.method }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>树体整体状态 <span class="required">*</span></label>
+          <select name="tree_condition" required>
+            {% set ns3 = namespace(selected=form_data.tree_condition if form_data else (observation.tree_condition if observation else '')) %}
+            {% for c in conditions %}
+            <option value="{{ c }}" {% if ns3.selected == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>树皮愈合情况</label>
+          <input type="text" name="bark_healing" maxlength="100"
+            value="{{ form_data.bark_healing if form_data else (observation.bark_healing if observation else '') }}"
+            placeholder="如：愈合良好、有结痂">
+        </div>
+        <div class="form-group">
+          <label>树液流动情况</label>
+          <input type="text" name="sap_flow" maxlength="100"
+            value="{{ form_data.sap_flow if form_data else (observation.sap_flow if observation else '') }}"
+            placeholder="如：正常、偏多、偏少">
+        </div>
+        <div class="form-group">
+          <label>叶片状态</label>
+          <input type="text" name="leaf_condition" maxlength="100"
+            value="{{ form_data.leaf_condition if form_data else (observation.leaf_condition if observation else '') }}"
+            placeholder="如：翠绿茂盛、有黄化现象">
+        </div>
+        <div class="form-group">
+          <label>&nbsp;</label>
+          <div class="checkbox-row">
+            <input type="checkbox" name="is_abnormal" id="is_abnormal"
+              {% if (form_data and form_data.is_abnormal) or (observation and observation.is_abnormal) %}checked{% endif %}>
+            <label for="is_abnormal" style="margin-bottom: 0;">标记为异常状态</label>
+          </div>
+        </div>
+        <div class="form-group full">
+          <label>处理建议 {% if form_data and form_data.is_abnormal %}<span class="required">*</span>{% endif %}</label>
+          <textarea name="treatment_suggestion" id="treatment_suggestion" maxlength="500"
+            placeholder="树体异常时请填写处理措施和建议...">{{ form_data.treatment_suggestion if form_data else (observation.treatment_suggestion if observation else '') }}</textarea>
+          {% if errors.treatment_suggestion %}
+          <span class="error-text">{{ errors.treatment_suggestion }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>观察员</label>
+          <input type="text" name="observer" maxlength="50"
+            value="{{ form_data.observer if form_data else (observation.observer if observation else '') }}">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="其他观察内容...">{{ form_data.remarks if form_data else (observation.remarks if observation else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/observations" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var treeSelect = document.getElementById('tree_select');
+  var incisionSelect = document.getElementById('incision_select');
+  var isAbnormal = document.getElementById('is_abnormal');
+  var treatmentSuggestion = document.getElementById('treatment_suggestion');
+
+  function filterIncisions() {
+    var treeId = treeSelect.value;
+    var options = incisionSelect.querySelectorAll('option');
+    options.forEach(function(opt) {
+      if (opt.value === '' || opt.dataset.tree === treeId) {
+        opt.style.display = '';
+      } else {
+        opt.style.display = 'none';
+        if (opt.selected) opt.selected = false;
+      }
+    });
+  }
+
+  function updateTreatmentRequired() {
+    if (isAbnormal.checked) {
+      treatmentSuggestion.setAttribute('required', 'required');
+      treatmentSuggestion.placeholder = '⚠️ 树体异常，处理建议为必填项';
+    } else {
+      treatmentSuggestion.removeAttribute('required');
+      treatmentSuggestion.placeholder = '树体异常时请填写处理措施和建议...';
+    }
+  }
+
+  treeSelect.addEventListener('change', filterIncisions);
+  isAbnormal.addEventListener('change', updateTreatmentRequired);
+
+  filterIncisions();
+  updateTreatmentRequired();
+});
+</script>
+
+{% endblock %}

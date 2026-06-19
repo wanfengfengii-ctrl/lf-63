@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{% if tree %}编辑漆树{% else %}新增漆树{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if tree %}✏️ 编辑漆树档案{% else %}➕ 新增漆树档案{% endif %}</h1>
+  <a href="/trees" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if tree %}/trees/{{ tree.id }}/edit{% else %}/trees/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>漆树编号 <span class="required">*</span></label>
+          <input type="text" name="tree_code" required maxlength="50"
+            value="{{ form_data.tree_code if form_data else (tree.tree_code if tree else '') }}"
+            placeholder="如：QS-001">
+          {% if errors.tree_code %}
+          <span class="error-text">{{ errors.tree_code }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>品种</label>
+          <input type="text" name="species" maxlength="100"
+            value="{{ form_data.species if form_data else (tree.species if tree else '') }}"
+            placeholder="如：大红袍、贵州漆树">
+        </div>
+        <div class="form-group">
+          <label>树龄（年）</label>
+          <input type="number" name="age" min="0"
+            value="{{ form_data.age if form_data else (tree.age if tree else '') }}">
+        </div>
+        <div class="form-group">
+          <label>海拔（m）</label>
+          <input type="number" name="altitude" step="0.1" min="0"
+            value="{{ form_data.altitude if form_data else (tree.altitude if tree else '') }}">
+        </div>
+        <div class="form-group">
+          <label>栽种日期</label>
+          <input type="date" name="planting_date"
+            value="{{ form_data.planting_date if form_data else (tree.planting_date.strftime('%Y-%m-%d') if tree and tree.planting_date else '') }}">
+        </div>
+        <div class="form-group">
+          <label>状态</label>
+          <select name="status">
+            {% set ns = namespace(selected=form_data.status if form_data else (tree.status if tree else '正常')) %}
+            <option value="正常" {% if ns.selected == '正常' %}selected{% endif %}>正常</option>
+            <option value="待观察" {% if ns.selected == '待观察' %}selected{% endif %}>待观察</option>
+            <option value="异常" {% if ns.selected == '异常' %}selected{% endif %}>异常</option>
+            <option value="已淘汰" {% if ns.selected == '已淘汰' %}selected{% endif %}>已淘汰</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>位置</label>
+          <input type="text" name="location" maxlength="200"
+            value="{{ form_data.location if form_data else (tree.location if tree else '') }}"
+            placeholder="如：山腰北坡第3排">
+        </div>
+        <div class="form-group">
+          <label>土壤类型</label>
+          <input type="text" name="soil_type" maxlength="100"
+            value="{{ form_data.soil_type if form_data else (tree.soil_type if tree else '') }}"
+            placeholder="如：黄壤、红壤">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="其他需要记录的信息...">{{ form_data.remarks if form_data else (tree.remarks if tree else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/trees" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{% if incision %}编辑割口{% else %}新增割口{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if incision %}✏️ 编辑割口记录{% else %}➕ 新增割口记录{% endif %}</h1>
+  <a href="/incisions" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not trees %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+  <div class="card-body">
+    <p>⚠️ <strong>尚无漆树档案，请先<a href="/trees/new">创建漆树档案</a>后再添加割口记录。</strong></p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if incision %}/incisions/{{ incision.id }}/edit{% else %}/incisions/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>所属漆树 <span class="required">*</span></label>
+          <select name="tree_id" required>
+            {% set ns = namespace(selected=form_data.tree_id if form_data else (incision.tree_id if incision else '')) %}
+            <option value="">请选择漆树</option>
+            {% for t in trees %}
+            <option value="{{ t.id }}" {% if ns.selected|string == t.id|string %}selected{% endif %}>{{ t.tree_code }} - {{ t.location or '未设置位置' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>割口编号 <span class="required">*</span></label>
+          <input type="text" name="incision_code" required maxlength="50"
+            value="{{ form_data.incision_code if form_data else (incision.incision_code if incision else '') }}"
+            placeholder="如：G1-A、G2-B">
+        </div>
+        <div class="form-group">
+          <label>割口位置 <span class="required">*</span></label>
+          <input type="text" name="position" required maxlength="100"
+            value="{{ form_data.position if form_data else (incision.position if incision else '') }}"
+            placeholder="如：树干东侧、主干北侧1.2m处">
+        </div>
+        <div class="form-group">
+          <label>割口高度（m）</label>
+          <input type="number" name="height" step="0.01" min="0"
+            value="{{ form_data.height if form_data else (incision.height if incision else '') }}">
+        </div>
+        <div class="form-group">
+          <label>割口方式 <span class="required">*</span></label>
+          <select name="method" required>
+            {% set ns2 = namespace(selected=form_data.method if form_data else (incision.method if incision else '')) %}
+            {% for m in methods %}
+            <option value="{{ m }}" {% if ns2.selected == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>割口日期 <span class="required">*</span></label>
+          <input type="date" name="incision_date" required
+            value="{{ form_data.incision_date if form_data else (incision.incision_date.strftime('%Y-%m-%d') if incision else '') }}">
+          {% if errors.incision_date %}
+          <span class="error-text">{{ errors.incision_date }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>恢复期（天）</label>
+          <input type="number" name="recovery_days" min="1"
+            value="{{ form_data.recovery_days if form_data else (incision.recovery_days if incision else 7) }}">
+        </div>
+        <div class="form-group">
+          <label>状态</label>
+          <select name="status">
+            {% set ns3 = namespace(selected=form_data.status if form_data else (incision.status if incision else '活跃')) %}
+            <option value="活跃" {% if ns3.selected == '活跃' %}selected{% endif %}>活跃</option>
+            <option value="休眠" {% if ns3.selected == '休眠' %}selected{% endif %}>休眠</option>
+            <option value="已封闭" {% if ns3.selected == '已封闭' %}selected{% endif %}>已封闭</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="割口尺寸、形状、其他说明...">{{ form_data.remarks if form_data else (incision.remarks if incision else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/incisions" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

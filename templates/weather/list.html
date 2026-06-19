@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}天气条件 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">🌤️ 天气条件记录</h1>
+  <a href="/weather/new" class="btn btn-primary">+ 记录天气</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if weathers %}
+    <table>
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>天气类型</th>
+          <th>温度</th>
+          <th>湿度</th>
+          <th>风速</th>
+          <th>备注</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in weathers %}
+        <tr>
+          <td><strong>{{ w.record_date.strftime('%Y-%m-%d') }}</strong></td>
+          <td>
+            {% if w.weather_type %}
+              {% if w.weather_type in ['晴'] %}<span class="badge badge-success">{{ w.weather_type }}</span>
+              {% elif w.weather_type in ['多云', '阴'] %}<span class="badge badge-info">{{ w.weather_type }}</span>
+              {% elif w.weather_type in ['小雨', '中雨', '大雨', '雾'] %}<span class="badge badge-warning">{{ w.weather_type }}</span>
+              {% else %}<span class="badge badge-secondary">{{ w.weather_type }}</span>{% endif %}
+            {% else %}-{% endif %}
+          </td>
+          <td>{{ '%.1f'|format(w.temperature) if w.temperature else '-' }} °C</td>
+          <td>{{ '%.0f'|format(w.humidity) if w.humidity else '-' }} %</td>
+          <td>{{ '%.1f'|format(w.wind_speed) if w.wind_speed else '-' }} m/s</td>
+          <td style="max-width: 250px;">{{ w.remarks or '-' }}</td>
+          <td class="action-col">
+            <a href="/weather/{{ w.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/weather/{{ w.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该天气记录吗？');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🌤️</div>
+      <div>暂无天气记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">记录天气条件可用于分析与产漆量的关系</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

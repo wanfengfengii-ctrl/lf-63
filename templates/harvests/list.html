@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}采收批次 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">🧪 采收批次</h1>
+  <a href="/harvests/new" class="btn btn-primary">+ 新增采收</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if harvests %}
+    <table>
+      <thead>
+        <tr>
+          <th>采收日期</th>
+          <th>所属漆树</th>
+          <th>割口编号</th>
+          <th>割口方式</th>
+          <th>出漆量</th>
+          <th>品质等级</th>
+          <th>天气</th>
+          <th>操作员</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in harvests %}
+        <tr>
+          <td>{{ h.harvest_date.strftime('%Y-%m-%d') }}</td>
+          <td><a href="/trees/{{ h.incision.tree.id }}">{{ h.incision.tree.tree_code }}</a></td>
+          <td>{{ h.incision.incision_code }}</td>
+          <td>{{ h.incision.method }}</td>
+          <td><strong>{{ '%.2f'|format(h.yield_amount) }} kg</strong></td>
+          <td>
+            {% if h.quality_grade %}
+              {% if h.quality_grade == '特级' %}<span class="badge badge-success">{{ h.quality_grade }}</span>
+              {% elif h.quality_grade == '一级' %}<span class="badge badge-info">{{ h.quality_grade }}</span>
+              {% elif h.quality_grade == '二级' %}<span class="badge badge-warning">{{ h.quality_grade }}</span>
+              {% else %}<span class="badge badge-secondary">{{ h.quality_grade }}</span>{% endif %}
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if h.weather %}
+              {{ h.weather.weather_type or '' }} {{ h.weather.temperature or '' }}{{ '°C' if h.weather.temperature else '' }}
+            {% else %}-{% endif %}
+          </td>
+          <td>{{ h.operator or '-' }}</td>
+          <td class="action-col">
+            <a href="/harvests/{{ h.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/harvests/{{ h.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该采收记录吗？相关产量统计将重新计算。');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🧪</div>
+      <div>暂无采收记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先添加漆树和割口后进行采收记录</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

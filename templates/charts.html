@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}数据图表 - 漆树采收管理系统{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">📈 数据图表分析</h1>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>单棵漆树出漆量趋势</h3>
+    </div>
+    <div class="card-body">
+      {% if trees %}
+      <div class="chart-select-row">
+        <label for="tree_select_chart" style="font-weight: 600;">选择漆树：</label>
+        <select id="tree_select_chart" style="min-width: 250px;">
+          {% for t in trees %}
+          <option value="{{ t.id }}">{{ t.tree_code }} - {{ t.species or '未标注品种' }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="loadTrendChart()">📊 加载趋势图</button>
+      </div>
+      <div id="trend_chart" class="chart-container"></div>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">📊</div>
+        <div>暂无漆树数据，请先添加漆树档案和采收记录</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>不同割口方式对比分析</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-select-row">
+        <button class="btn btn-primary btn-sm" onclick="loadComparisonCharts()">🔄 加载对比图表</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">平均单次产量对比（kg/次）</h4>
+          <div id="avg_yield_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">累计总产量对比（kg）</h4>
+          <div id="total_yield_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割法采收次数</h4>
+          <div id="harvest_count_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割法异常发生率（%）</h4>
+          <div id="abnormal_rate_chart" style="height: 350px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+var chartColors = ['#2d5016', '#8b4513', '#d4a574', '#4a7c23', '#a0522d', '#c0392b', '#2980b9', '#e67e22'];
+
+function loadTrendChart() {
+  var treeId = document.getElementById('tree_select_chart').value;
+  if (!treeId) return;
+
+  fetch('/api/tree-yield-trend/' + treeId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.traces.length === 0) {
+        document.getElementById('trend_chart').innerHTML =
+          '<div class="empty-state"><div class="icon">🧪</div><div>该漆树暂无采收记录</div></div>';
+        return;
+      }
+      var layout = {
+        title: { text: data.title, font: { size: 18, color: '#2d5016' } },
+        xaxis: { title: '采收日期', tickangle: -30 },
+        yaxis: { title: '出漆量 (kg)' },
+        legend: { orientation: 'h', y: -0.2 },
+        margin: { l: 60, r: 30, t: 60, b: 80 },
+        hovermode: 'x unified'
+      };
+      data.traces.forEach(function(trace, i) {
+        trace.line = { color: chartColors[i % chartColors.length], width: 2 };
+        trace.marker = { size: 8, color: chartColors[i % chartColors.length] };
+      });
+      Plotly.newPlot('trend_chart', data.traces, layout, { responsive: true, displayModeBar: false });
+    });
+}
+
+function loadComparisonCharts() {
+  fetch('/api/method-comparison')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.methods.length === 0) {
+        ['avg_yield_chart', 'total_yield_chart', 'harvest_count_chart', 'abnormal_rate_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML =
+            '<div class="empty-state"><div class="icon">📊</div><div>暂无数据</div></div>';
+        });
+        return;
+      }
+
+      var avgBar = {
+        x: data.methods,
+        y: data.avg_yields,
+        type: 'bar',
+        marker: { color: chartColors.slice(0, data.methods.length) },
+        text: data.avg_yields.map(function(v) { return v + ' kg'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('avg_yield_chart', [avgBar], {
+        yaxis: { title: '平均产量 (kg/次)' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var totalBar = {
+        x: data.methods,
+        y: data.total_yields,
+        type: 'bar',
+        marker: { color: chartColors.slice(0, data.methods.length) },
+        text: data.total_yields.map(function(v) { return v + ' kg'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('total_yield_chart', [totalBar], {
+        yaxis: { title: '累计产量 (kg)' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var countBar = {
+        x: data.methods,
+        y: data.harvest_counts,
+        type: 'bar',
+        marker: { color: chartColors.slice(0, data.methods.length) },
+        text: data.harvest_counts,
+        textposition: 'outside'
+      };
+      Plotly.newPlot('harvest_count_chart', [countBar], {
+        yaxis: { title: '采收次数' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var rateBar = {
+        x: data.methods,
+        y: data.abnormal_rates,
+        type: 'bar',
+        marker: {
+          color: data.abnormal_rates.map(function(v) {
+            return v > 20 ? '#c0392b' : v > 10 ? '#e67e22' : '#27ae60';
+          })
+        },
+        text: data.abnormal_rates.map(function(v) { return v + '%'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('abnormal_rate_chart', [rateBar], {
+        yaxis: { title: '异常率 (%)', range: [0, Math.max(30, Math.max.apply(null, data.abnormal_rates) + 5)] },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('tree_select_chart')) {
+    loadTrendChart();
+  }
+  loadComparisonCharts();
+});
+</script>
+{% endblock %}

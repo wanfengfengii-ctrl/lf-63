@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}漆树档案 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">🌳 漆树档案</h1>
+  <a href="/trees/new" class="btn btn-primary">+ 新增漆树</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if trees %}
+    <table>
+      <thead>
+        <tr>
+          <th>编号</th>
+          <th>品种</th>
+          <th>树龄</th>
+          <th>位置</th>
+          <th>海拔</th>
+          <th>土壤</th>
+          <th>栽种日期</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tree in trees %}
+        <tr>
+          <td><strong>{{ tree.tree_code }}</strong></td>
+          <td>{{ tree.species or '-' }}</td>
+          <td>{{ tree.age or '-' }} 年</td>
+          <td>{{ tree.location or '-' }}</td>
+          <td>{{ tree.altitude or '-' }} m</td>
+          <td>{{ tree.soil_type or '-' }}</td>
+          <td>{{ tree.planting_date.strftime('%Y-%m-%d') if tree.planting_date else '-' }}</td>
+          <td>
+            {% if tree.status == '正常' %}
+              <span class="badge badge-success">正常</span>
+            {% elif tree.status == '待观察' %}
+              <span class="badge badge-warning">待观察</span>
+            {% elif tree.status == '异常' %}
+              <span class="badge badge-danger">异常</span>
+            {% else %}
+              <span class="badge badge-secondary">{{ tree.status }}</span>
+            {% endif %}
+          </td>
+          <td class="action-col">
+            <a href="/trees/{{ tree.id }}" class="btn btn-outline btn-sm">详情</a>
+            <a href="/trees/{{ tree.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/trees/{{ tree.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该漆树档案吗？相关的割口和采收记录将一并删除。');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🌳</div>
+      <div>暂无漆树档案</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">点击右上角"新增漆树"开始建档</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

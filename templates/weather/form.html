@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{% if weather %}编辑天气{% else %}记录天气{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if weather %}✏️ 编辑天气记录{% else %}➕ 新增天气记录{% endif %}</h1>
+  <a href="/weather" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if weather %}/weather/{{ weather.id }}/edit{% else %}/weather/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>记录日期 <span class="required">*</span></label>
+          <input type="date" name="record_date" required max="{{ today }}"
+            value="{{ weather.record_date.strftime('%Y-%m-%d') if weather else today }}">
+          {% if errors.record_date %}
+          <span class="error-text">{{ errors.record_date }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>天气类型</label>
+          <select name="weather_type">
+            <option value="">请选择</option>
+            {% for wt in weather_types %}
+            <option value="{{ wt }}" {% if weather and weather.weather_type == wt %}selected{% endif %}>{{ wt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>温度（°C）</label>
+          <input type="number" name="temperature" step="0.1"
+            value="{{ weather.temperature if weather else '' }}">
+        </div>
+        <div class="form-group">
+          <label>湿度（%）</label>
+          <input type="number" name="humidity" step="1" min="0" max="100"
+            value="{{ weather.humidity if weather else '' }}">
+        </div>
+        <div class="form-group">
+          <label>风速（m/s）</label>
+          <input type="number" name="wind_speed" step="0.1" min="0"
+            value="{{ weather.wind_speed if weather else '' }}">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="其他天气相关信息...">{{ weather.remarks if weather else '' }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/weather" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

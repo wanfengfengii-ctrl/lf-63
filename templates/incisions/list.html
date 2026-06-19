@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}割口记录 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">✂️ 割口记录</h1>
+  <a href="/incisions/new" class="btn btn-primary">+ 新增割口</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if incisions %}
+    <table>
+      <thead>
+        <tr>
+          <th>所属漆树</th>
+          <th>割口编号</th>
+          <th>位置</th>
+          <th>高度</th>
+          <th>割法</th>
+          <th>割口日期</th>
+          <th>恢复期</th>
+          <th>采收次数</th>
+          <th>累计产量</th>
+          <th>均次产量</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inc in incisions %}
+        <tr>
+          <td><a href="/trees/{{ inc.tree.id }}">{{ inc.tree.tree_code }}</a></td>
+          <td><strong>{{ inc.incision_code }}</strong></td>
+          <td>{{ inc.position }}</td>
+          <td>{{ inc.height or '-' }} m</td>
+          <td>{{ inc.method }}</td>
+          <td>{{ inc.incision_date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ inc.recovery_days }} 天</td>
+          <td>{{ inc.total_harvests }} 次</td>
+          <td>{{ '%.2f'|format(inc.total_yield) }} kg</td>
+          <td>{{ '%.2f'|format(inc.avg_yield) }} kg</td>
+          <td>
+            {% if inc.status == '活跃' %}<span class="badge badge-success">活跃</span>
+            {% elif inc.status == '休眠' %}<span class="badge badge-warning">休眠</span>
+            {% elif inc.status == '已封闭' %}<span class="badge badge-secondary">已封闭</span>
+            {% else %}<span class="badge badge-secondary">{{ inc.status }}</span>{% endif %}
+          </td>
+          <td class="action-col">
+            <a href="/incisions/{{ inc.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/incisions/{{ inc.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该割口记录吗？相关采收记录将一并删除。');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">✂️</div>
+      <div>暂无割口记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先添加漆树，然后创建割口记录</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}首页 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">漆树总数</div>
+    <div class="stat-value">{{ tree_count }} <small>棵</small></div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">割口总数</div>
+    <div class="stat-value">{{ incision_count }} <small>个</small></div>
+  </div>
+  <div class="stat-card warning">
+    <div class="stat-label">采收批次</div>
+    <div class="stat-value">{{ harvest_count }} <small>次</small></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">累计产漆量</div>
+    <div class="stat-value">{{ total_yield }} <small>kg</small></div>
+  </div>
+  <div class="stat-card danger">
+    <div class="stat-label">异常观察记录</div>
+    <div class="stat-value">{{ abnormal_count }} <small>条</small></div>
+  </div>
+  <div class="stat-card warning">
+    <div class="stat-label">待采收割口</div>
+    <div class="stat-value">{{ ready_count }} <small>个</small></div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+  <div class="card">
+    <div class="card-header">
+      <span>📅 采收提醒</span>
+      <a href="/harvests/new" class="btn btn-primary btn-sm">新增采收</a>
+    </div>
+    <div class="card-body">
+      {% if harvest_reminders %}
+      <ul class="reminder-list">
+        {% for r in harvest_reminders %}
+        <li class="reminder-item">
+          <div class="reminder-info">
+            <span class="reminder-tree">{{ r.tree_code }} · {{ r.incision_code }} ({{ r.method }})</span>
+            <span class="reminder-sub">预计采收日期: {{ r.next_harvest.strftime('%Y-%m-%d') }}</span>
+          </div>
+          {% if r.status == '待采收' %}
+            <span class="badge badge-warning">{{ r.days_left }}天后过期</span>
+          {% else %}
+            <span class="badge badge-info">还需 {{ r.days_left }} 天</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">🌱</div>
+        <div>暂无采收提醒</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先添加漆树和割口记录</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span>📊 快捷操作</span>
+    </div>
+    <div class="card-body">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <a href="/trees/new" class="btn btn-primary" style="justify-content: center; padding: 1rem;">
+          🌳 新增漆树
+        </a>
+        <a href="/incisions/new" class="btn btn-secondary" style="justify-content: center; padding: 1rem;">
+          ✂️ 新增割口
+        </a>
+        <a href="/harvests/new" class="btn btn-primary" style="justify-content: center; padding: 1rem;">
+          🧪 新增采收
+        </a>
+        <a href="/observations/new" class="btn btn-outline" style="justify-content: center; padding: 1rem;">
+          🔍 新增观察
+        </a>
+        <a href="/weather/new" class="btn btn-outline" style="justify-content: center; padding: 1rem;">
+          🌤️ 记录天气
+        </a>
+        <a href="/charts" class="btn btn-secondary" style="justify-content: center; padding: 1rem;">
+          📈 查看图表
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

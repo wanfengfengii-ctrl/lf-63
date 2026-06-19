@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}恢复观察 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">🔍 恢复观察记录</h1>
+  <a href="/observations/new" class="btn btn-primary">+ 新增观察</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if observations %}
+    <table>
+      <thead>
+        <tr>
+          <th>观察日期</th>
+          <th>漆树</th>
+          <th>割口</th>
+          <th>树体状态</th>
+          <th>树皮愈合</th>
+          <th>树液流动</th>
+          <th>叶片状态</th>
+          <th>异常标记</th>
+          <th>处理建议</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obs in observations %}
+        <tr>
+          <td>{{ obs.observation_date.strftime('%Y-%m-%d') }}</td>
+          <td><a href="/trees/{{ obs.tree.id }}">{{ obs.tree.tree_code }}</a></td>
+          <td>{{ obs.incision.incision_code if obs.incision else '-' }}</td>
+          <td>
+            {% if obs.tree_condition == '优秀' %}<span class="badge badge-success">{{ obs.tree_condition }}</span>
+            {% elif obs.tree_condition == '良好' %}<span class="badge badge-info">{{ obs.tree_condition }}</span>
+            {% elif obs.tree_condition == '一般' %}<span class="badge badge-secondary">{{ obs.tree_condition }}</span>
+            {% elif obs.tree_condition == '较差' or obs.tree_condition == '异常' %}<span class="badge badge-danger">{{ obs.tree_condition }}</span>
+            {% else %}{{ obs.tree_condition }}{% endif %}
+          </td>
+          <td>{{ obs.bark_healing or '-' }}</td>
+          <td>{{ obs.sap_flow or '-' }}</td>
+          <td>{{ obs.leaf_condition or '-' }}</td>
+          <td>
+            {% if obs.is_abnormal %}<span class="badge badge-danger">异常</span>
+            {% else %}<span class="badge badge-success">正常</span>{% endif %}
+          </td>
+          <td style="max-width: 200px;">{{ obs.treatment_suggestion or '-' }}</td>
+          <td class="action-col">
+            <a href="/observations/{{ obs.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/observations/{{ obs.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该观察记录吗？');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🔍</div>
+      <div>暂无观察记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">定期观察树体恢复情况有助于科学采收</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

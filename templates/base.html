@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}漆树采收管理系统{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a href="/" class="navbar-brand">
+        <span>🌳</span>
+        漆树采收管理系统
+      </a>
+      <ul class="navbar-nav">
+        <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">首页</a></li>
+        <li><a href="/trees" class="{% if '/trees' in request.url.path and '/trees/' not in request.url.path %}active{% endif %}">漆树档案</a></li>
+        <li><a href="/incisions" class="{% if '/incisions' in request.url.path %}active{% endif %}">割口记录</a></li>
+        <li><a href="/harvests" class="{% if '/harvests' in request.url.path %}active{% endif %}">采收批次</a></li>
+        <li><a href="/weather" class="{% if '/weather' in request.url.path %}active{% endif %}">天气条件</a></li>
+        <li><a href="/observations" class="{% if '/observations' in request.url.path %}active{% endif %}">恢复观察</a></li>
+        <li><a href="/charts" class="{% if '/charts' in request.url.path %}active{% endif %}">数据图表</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

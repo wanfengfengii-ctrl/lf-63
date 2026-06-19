@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ tree.tree_code }} - 漆树详情{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">🌳 {{ tree.tree_code }} <small style="font-size: 1rem; font-weight: 400; color: var(--text-light);">{{ tree.species or '' }}</small></h1>
+  <div class="btn-group">
+    <a href="/trees/{{ tree.id }}/edit" class="btn btn-secondary">编辑档案</a>
+    <a href="/trees" class="btn btn-outline">← 返回列表</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">基本信息</div>
+  <div class="card-body">
+    <div class="info-grid">
+      <div class="info-item">
+        <span class="label">漆树编号</span>
+        <span class="value">{{ tree.tree_code }}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">品种</span>
+        <span class="value">{{ tree.species or '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">树龄</span>
+        <span class="value">{{ tree.age or '-' }} 年</span>
+      </div>
+      <div class="info-item">
+        <span class="label">栽种日期</span>
+        <span class="value">{{ tree.planting_date.strftime('%Y-%m-%d') if tree.planting_date else '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">位置</span>
+        <span class="value">{{ tree.location or '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">海拔</span>
+        <span class="value">{{ tree.altitude or '-' }} m</span>
+      </div>
+      <div class="info-item">
+        <span class="label">土壤类型</span>
+        <span class="value">{{ tree.soil_type or '-' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">当前状态</span>
+        <span class="value">
+          {% if tree.status == '正常' %}<span class="badge badge-success">正常</span>
+          {% elif tree.status == '待观察' %}<span class="badge badge-warning">待观察</span>
+          {% elif tree.status == '异常' %}<span class="badge badge-danger">异常</span>
+          {% else %}<span class="badge badge-secondary">{{ tree.status }}</span>{% endif %}
+        </span>
+      </div>
+      {% if tree.remarks %}
+      <div class="info-item full" style="grid-column: 1 / -1;">
+        <span class="label">备注</span>
+        <span class="value">{{ tree.remarks }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>✂️ 割口记录（{{ incisions|length }} 个）</span>
+    <a href="/incisions/new" class="btn btn-primary btn-sm">+ 新增割口</a>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    {% if incisions %}
+    <table>
+      <thead>
+        <tr>
+          <th>割口编号</th>
+          <th>位置</th>
+          <th>割法</th>
+          <th>割口日期</th>
+          <th>恢复期</th>
+          <th>采收次数</th>
+          <th>累计产量</th>
+          <th>均次产量</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inc in incisions %}
+        <tr>
+          <td><strong>{{ inc.incision_code }}</strong></td>
+          <td>{{ inc.position }}</td>
+          <td>{{ inc.method }}</td>
+          <td>{{ inc.incision_date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ inc.recovery_days }} 天</td>
+          <td>{{ inc.total_harvests }} 次</td>
+          <td>{{ '%.2f'|format(inc.total_yield) }} kg</td>
+          <td>{{ '%.2f'|format(inc.avg_yield) }} kg</td>
+          <td>
+            {% if inc.status == '活跃' %}<span class="badge badge-success">活跃</span>
+            {% elif inc.status == '休眠' %}<span class="badge badge-warning">休眠</span>
+            {% else %}<span class="badge badge-secondary">{{ inc.status }}</span>{% endif %}
+          </td>
+          <td class="action-col">
+            <a href="/incisions/{{ inc.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">✂️</div>
+      <div>暂无割口记录</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span>🔍 恢复观察记录（{{ observations|length }} 条）</span>
+    <a href="/observations/new" class="btn btn-primary btn-sm">+ 新增观察</a>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    {% if observations %}
+    <table>
+      <thead>
+        <tr>
+          <th>观察日期</th>
+          <th>树体状态</th>
+          <th>树皮愈合</th>
+          <th>树液流动</th>
+          <th>叶片状态</th>
+          <th>是否异常</th>
+          <th>处理建议</th>
+          <th>观察员</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obs in observations %}
+        <tr>
+          <td>{{ obs.observation_date.strftime('%Y-%m-%d') }}</td>
+          <td>{{ obs.tree_condition }}</td>
+          <td>{{ obs.bark_healing or '-' }}</td>
+          <td>{{ obs.sap_flow or '-' }}</td>
+          <td>{{ obs.leaf_condition or '-' }}</td>
+          <td>
+            {% if obs.is_abnormal %}<span class="badge badge-danger">异常</span>
+            {% else %}<span class="badge badge-success">正常</span>{% endif %}
+          </td>
+          <td>{{ obs.treatment_suggestion or '-' }}</td>
+          <td>{{ obs.observer or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">🔍</div>
+      <div>暂无观察记录</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
