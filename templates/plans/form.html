@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}{% if plan %}编辑采收计划{% else %}新增采收计划{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if plan %}✏️ 编辑采收计划{% else %}➕ 新增采收计划{% endif %}</h1>
+  <a href="/plans" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not trees %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+  <div class="card-body">
+    <p>⚠️ <strong>尚无漆树档案，请先<a href="/trees/new">创建漆树档案</a>后再添加采收计划。</strong></p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if plan %}/plans/{{ plan.id }}/edit{% else %}/plans/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>漆树 <span class="required">*</span></label>
+          <select name="tree_id" id="tree_select" required onchange="loadIncisionOptions()">
+            {% set ns = namespace(selected=form_data.tree_id if form_data else (plan.tree_id if plan else '')) %}
+            <option value="">请选择漆树</option>
+            {% for t in trees %}
+            <option value="{{ t.id }}" {% if ns.selected|string == t.id|string %}selected{% endif %}>
+              {{ t.tree_code }} - {{ t.species or '未标注品种' }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>割口 <span class="required">*</span></label>
+          <select name="incision_id" id="incision_select" required>
+            {% set ns2 = namespace(selected=form_data.incision_id if form_data else (plan.incision_id if plan else '')) %}
+            <option value="">请先选择漆树</option>
+            {% if plan %}
+              {% for inc in incisions %}
+                {% if inc.tree_id == plan.tree_id %}
+                <option value="{{ inc.id }}" {% if ns2.selected|string == inc.id|string %}selected{% endif %}>
+                  {{ inc.incision_code }} ({{ inc.method }})
+                </option>
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+          </select>
+          <div id="incision_warning" style="display: none; margin-top: 0.5rem; padding: 0.5rem; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px; font-size: 0.85rem; color: #856404;">
+            ⚠️ 该割口存在异常观察记录，需先处理异常后才能计划采收
+          </div>
+        </div>
+        <div class="form-group">
+          <label>计划日期 <span class="required">*</span></label>
+          <input type="date" name="plan_date" required min="{{ today }}"
+            value="{{ form_data.plan_date if form_data else (plan.plan_date.strftime('%Y-%m-%d') if plan else today) }}">
+          {% if errors.plan_date %}
+          <span class="error-text">{{ errors.plan_date }}</span>
+          {% endif %}
+          {% if errors.recovery %}
+          <span class="error-text">{{ errors.recovery }}</span>
+          {% endif %}
+          {% if errors.abnormal %}
+          <span class="error-text">{{ errors.abnormal }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>采收方式 <span class="required">*</span></label>
+          <select name="harvest_method" required>
+            {% set ns3 = namespace(selected=form_data.harvest_method if form_data else (plan.harvest_method if plan else '')) %}
+            <option value="">请选择采收方式</option>
+            {% for m in methods %}
+            <option value="{{ m }}" {% if ns3.selected == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if plan and statuses %}
+        <div class="form-group">
+          <label>状态</label>
+          <select name="status">
+            {% set ns4 = namespace(selected=form_data.status if form_data else (plan.status if plan else '待执行')) %}
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if ns4.selected == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="form-group">
+          <label>负责人</label>
+          <input type="text" name="person_in_charge" maxlength="50"
+            value="{{ form_data.person_in_charge if form_data else (plan.person_in_charge if plan else '') }}"
+            placeholder="请输入负责人姓名">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="采收计划的其他说明...">{{ form_data.remarks if form_data else (plan.remarks if plan else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/plans" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+var currentPlanIncisionId = {{ plan.incision_id if plan else 'null' }};
+
+function loadIncisionOptions() {
+  var treeId = document.getElementById('tree_select').value;
+  var incisionSelect = document.getElementById('incision_select');
+  var warningDiv = document.getElementById('incision_warning');
+  
+  if (!treeId) {
+    incisionSelect.innerHTML = '<option value="">请先选择漆树</option>';
+    warningDiv.style.display = 'none';
+    return;
+  }
+  
+  incisionSelect.innerHTML = '<option value="">加载中...</option>';
+  warningDiv.style.display = 'none';
+  
+  fetch('/api/incision-options/' + treeId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var options = '<option value="">请选择割口</option>';
+      var abnormalIncisionIds = [];
+      
+      data.incisions.forEach(function(inc) {
+        var disabled = inc.is_abnormal ? 'disabled' : '';
+        var label = inc.incision_code + ' (' + inc.method + ')';
+        if (inc.is_abnormal) {
+          label += ' ⚠️ 异常';
+          abnormalIncisionIds.push(inc.id);
+        }
+        var selected = (currentPlanIncisionId == inc.id) ? 'selected' : '';
+        options += '<option value="' + inc.id + '" ' + disabled + ' ' + selected + '>' + label + '</option>';
+      });
+      
+      incisionSelect.innerHTML = options;
+      
+      incisionSelect.onchange = function() {
+        var selectedId = parseInt(this.value);
+        if (abnormalIncisionIds.indexOf(selectedId) !== -1) {
+          warningDiv.style.display = 'block';
+        } else {
+          warningDiv.style.display = 'none';
+        }
+      };
+    })
+    .catch(function() {
+      incisionSelect.innerHTML = '<option value="">加载失败，请重试</option>';
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var treeSelect = document.getElementById('tree_select');
+  if (treeSelect && treeSelect.value) {
+    loadIncisionOptions();
+  }
+});
+</script>
+{% endblock %}

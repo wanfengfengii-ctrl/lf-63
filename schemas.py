@@ -155,3 +155,35 @@ class Observation(ObservationBase):
 
     class Config:
         from_attributes = True
+
+
+class HarvestPlanBase(BaseModel):
+    tree_id: int
+    incision_id: int
+    plan_date: date
+    harvest_method: str
+    person_in_charge: Optional[str] = None
+    status: Optional[str] = "待执行"
+    remarks: Optional[str] = None
+
+
+class HarvestPlanCreate(HarvestPlanBase):
+    @field_validator("plan_date")
+    @classmethod
+    def plan_date_not_past(cls, v):
+        if v < date.today():
+            raise ValueError("计划日期不能早于当前日期")
+        return v
+
+
+class HarvestPlanUpdate(HarvestPlanBase):
+    actual_harvest_id: Optional[int] = None
+
+
+class HarvestPlan(HarvestPlanBase):
+    id: int
+    actual_harvest_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}采收计划 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">📋 采收计划</h1>
+  <a href="/plans/new" class="btn btn-primary">+ 新增计划</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if plans %}
+    <table>
+      <thead>
+        <tr>
+          <th>计划日期</th>
+          <th>所属漆树</th>
+          <th>割口编号</th>
+          <th>采收方式</th>
+          <th>负责人</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plans %}
+        <tr>
+          <td>{{ p.plan_date.strftime('%Y-%m-%d') }}</td>
+          <td><a href="/trees/{{ p.tree.id }}">{{ p.tree.tree_code }}</a></td>
+          <td>{{ p.incision.incision_code }}</td>
+          <td>{{ p.harvest_method }}</td>
+          <td>{{ p.person_in_charge or '-' }}</td>
+          <td>
+            {% if p.status == '待执行' %}
+              {% set days_left = (p.plan_date - today).days %}
+              {% if days_left < 0 %}
+                <span class="badge badge-danger">已过期</span>
+              {% elif days_left <= 3 %}
+                <span class="badge badge-warning">即将到期 ({{ days_left }}天)</span>
+              {% else %}
+                <span class="badge badge-info">待执行 ({{ days_left }}天)</span>
+              {% endif %}
+            {% elif p.status == '已执行' %}
+              <span class="badge badge-success">{{ p.status }}</span>
+            {% elif p.status == '已过期' %}
+              <span class="badge badge-danger">{{ p.status }}</span>
+            {% else %}
+              <span class="badge badge-secondary">{{ p.status }}</span>
+            {% endif %}
+          </td>
+          <td class="action-col">
+            {% if p.status == '待执行' %}
+            <form method="POST" action="/plans/{{ p.id }}/execute" class="inline-form">
+              <button type="submit" class="btn btn-success btn-sm">执行采收</button>
+            </form>
+            {% endif %}
+            <a href="/plans/{{ p.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/plans/{{ p.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该采收计划吗？');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">📋</div>
+      <div>暂无采收计划</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">点击上方"新增计划"按钮创建采收计划</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

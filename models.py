@@ -93,3 +93,22 @@ class RecoveryObservation(Base):
 
     tree = relationship("LacquerTree", back_populates="observations")
     incision = relationship("Incision")
+
+
+class HarvestPlan(Base):
+    __tablename__ = "harvest_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tree_id = Column(Integer, ForeignKey("lacquer_trees.id"), nullable=False)
+    incision_id = Column(Integer, ForeignKey("incisions.id"), nullable=False)
+    plan_date = Column(Date, nullable=False)
+    harvest_method = Column(String(50), nullable=False)
+    person_in_charge = Column(String(50))
+    status = Column(String(20), default="待执行")
+    actual_harvest_id = Column(Integer, ForeignKey("harvest_batches.id"))
+    remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    tree = relationship("LacquerTree")
+    incision = relationship("Incision")
+    actual_harvest = relationship("HarvestBatch")

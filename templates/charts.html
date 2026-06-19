@@ -72,6 +72,56 @@
   </div>
 </div>
 
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>计划与实际采收对比分析</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-select-row">
+        <button class="btn btn-primary btn-sm" onclick="loadPlanVsActualCharts()">🔄 加载对比图表</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">月度计划采收次数 vs 实际采收次数</h4>
+          <div id="plan_actual_count_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">月度实际产量（kg）</h4>
+          <div id="plan_actual_yield_chart" style="height: 350px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>异常状态与产量关系分析</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-select-row">
+        <button class="btn btn-primary btn-sm" onclick="loadAbnormalYieldCharts()">🔄 加载关系分析图表</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割口异常率 vs 平均单次产量（kg）</h4>
+          <div id="abnormal_yield_scatter_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割口异常率 vs 累计总产量（kg）</h4>
+          <div id="abnormal_total_yield_chart" style="height: 350px;"></div>
+        </div>
+      </div>
+      <div id="abnormal_yield_table_container" style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">割口异常与产量明细</h4>
+        <div id="abnormal_yield_table" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -186,11 +236,175 @@ function loadComparisonCharts() {
     });
 }
 
+function loadPlanVsActualCharts() {
+  ['plan_actual_count_chart', 'plan_actual_yield_chart'].forEach(function(id) {
+    document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  });
+
+  fetch('/api/plan-vs-actual')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.months.length === 0) {
+        ['plan_actual_count_chart', 'plan_actual_yield_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无计划数据</div></div>';
+        });
+        return;
+      }
+
+      var plannedTrace = {
+        x: data.months,
+        y: data.planned_counts,
+        name: '计划次数',
+        type: 'bar',
+        marker: { color: '#3498db' },
+        text: data.planned_counts,
+        textposition: 'outside'
+      };
+      var actualTrace = {
+        x: data.months,
+        y: data.actual_counts,
+        name: '实际次数',
+        type: 'bar',
+        marker: { color: '#27ae60' },
+        text: data.actual_counts,
+        textposition: 'outside'
+      };
+      Plotly.newPlot('plan_actual_count_chart', [plannedTrace, actualTrace], {
+        barmode: 'group',
+        yaxis: { title: '次数' },
+        legend: { orientation: 'h', y: -0.2 },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var yieldTrace = {
+        x: data.months,
+        y: data.actual_yields,
+        type: 'bar',
+        marker: { 
+          color: data.actual_yields.map(function(v) {
+            return v > 5 ? '#27ae60' : v > 2 ? '#f39c12' : '#e74c3c';
+          })
+        },
+        text: data.actual_yields.map(function(v) { return v + ' kg'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('plan_actual_yield_chart', [yieldTrace], {
+        yaxis: { title: '实际产量 (kg)' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+    })
+    .catch(function() {
+      ['plan_actual_count_chart', 'plan_actual_yield_chart'].forEach(function(id) {
+        document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>数据加载失败，请稍后重试</div></div>';
+      });
+    });
+}
+
+function loadAbnormalYieldCharts() {
+  ['abnormal_yield_scatter_chart', 'abnormal_total_yield_chart'].forEach(function(id) {
+    document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  });
+  document.getElementById('abnormal_yield_table').innerHTML = '';
+
+  fetch('/api/abnormal-yield-relation')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.details.length === 0) {
+        ['abnormal_yield_scatter_chart', 'abnormal_total_yield_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无数据</div></div>';
+        });
+        return;
+      }
+
+      var scatterTrace = {
+        x: data.abnormal_rates,
+        y: data.avg_yields,
+        mode: 'markers+text',
+        text: data.incision_codes,
+        textposition: 'top center',
+        marker: {
+          size: 12,
+          color: data.abnormal_rates.map(function(v) {
+            return v > 30 ? '#e74c3c' : v > 10 ? '#f39c12' : '#27ae60';
+          }),
+          line: {
+            color: '#2d5016',
+            width: 1
+          }
+        },
+        type: 'scatter'
+      };
+      Plotly.newPlot('abnormal_yield_scatter_chart', [scatterTrace], {
+        xaxis: { title: '异常率 (%)' },
+        yaxis: { title: '平均单次产量 (kg)' },
+        margin: { l: 60, r: 30, t: 20, b: 60 },
+        hovermode: 'closest'
+      }, { responsive: true, displayModeBar: false });
+
+      var totalTrace = {
+        x: data.abnormal_rates,
+        y: data.total_yields,
+        mode: 'markers+text',
+        text: data.incision_codes,
+        textposition: 'top center',
+        marker: {
+          size: 12,
+          color: data.abnormal_rates.map(function(v) {
+            return v > 30 ? '#e74c3c' : v > 10 ? '#f39c12' : '#27ae60';
+          }),
+          line: {
+            color: '#8b4513',
+            width: 1
+          }
+        },
+        type: 'scatter'
+      };
+      Plotly.newPlot('abnormal_total_yield_chart', [totalTrace], {
+        xaxis: { title: '异常率 (%)' },
+        yaxis: { title: '累计总产量 (kg)' },
+        margin: { l: 60, r: 30, t: 20, b: 60 },
+        hovermode: 'closest'
+      }, { responsive: true, displayModeBar: false });
+
+      var tableHtml = '<table><thead><tr><th>割口编号</th><th>所属漆树</th><th>采收次数</th><th>平均单次产量</th><th>累计总产量</th><th>异常观察次数</th><th>异常率</th></tr></thead><tbody>';
+      data.details.forEach(function(d) {
+        var abnormalClass = d.abnormal_rate > 30 ? 'background: #fdecea;' : d.abnormal_rate > 10 ? 'background: #fff4e5;' : '';
+        tableHtml += '<tr style="' + abnormalClass + '">';
+        tableHtml += '<td>' + d.incision_code + '</td>';
+        tableHtml += '<td>' + d.tree_code + '</td>';
+        tableHtml += '<td>' + d.total_harvests + '</td>';
+        tableHtml += '<td>' + d.avg_yield.toFixed(3) + ' kg</td>';
+        tableHtml += '<td><strong>' + d.total_yield.toFixed(2) + ' kg</strong></td>';
+        tableHtml += '<td>' + d.abnormal_count + '</td>';
+        tableHtml += '<td>';
+        if (d.abnormal_rate > 30) {
+          tableHtml += '<span class="badge badge-danger">' + d.abnormal_rate + '%</span>';
+        } else if (d.abnormal_rate > 10) {
+          tableHtml += '<span class="badge badge-warning">' + d.abnormal_rate + '%</span>';
+        } else {
+          tableHtml += '<span class="badge badge-success">' + d.abnormal_rate + '%</span>';
+        }
+        tableHtml += '</td></tr>';
+      });
+      tableHtml += '</tbody></table>';
+      document.getElementById('abnormal_yield_table').innerHTML = tableHtml;
+    })
+    .catch(function() {
+      ['abnormal_yield_scatter_chart', 'abnormal_total_yield_chart'].forEach(function(id) {
+        document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>数据加载失败，请稍后重试</div></div>';
+      });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   if (document.getElementById('tree_select_chart')) {
     loadTrendChart();
   }
   loadComparisonCharts();
+  loadPlanVsActualCharts();
+  loadAbnormalYieldCharts();
 });
 </script>
 {% endblock %}
