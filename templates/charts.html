@@ -25,7 +25,12 @@
         </select>
         <button class="btn btn-primary btn-sm" onclick="loadTrendChart()">📊 加载趋势图</button>
       </div>
-      <div id="trend_chart" class="chart-container"></div>
+      <div id="trend_chart" class="chart-container">
+        <div class="empty-state" id="trend_empty">
+          <div class="icon">📊</div>
+          <div>请选择漆树并点击"加载趋势图"查看出漆量趋势</div>
+        </div>
+      </div>
       {% else %}
       <div class="empty-state">
         <div class="icon">📊</div>
@@ -76,12 +81,15 @@ function loadTrendChart() {
   var treeId = document.getElementById('tree_select_chart').value;
   if (!treeId) return;
 
+  var container = document.getElementById('trend_chart');
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+
   fetch('/api/tree-yield-trend/' + treeId)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.traces.length === 0) {
-        document.getElementById('trend_chart').innerHTML =
-          '<div class="empty-state"><div class="icon">🧪</div><div>该漆树暂无采收记录</div></div>';
+        container.innerHTML =
+          '<div class="empty-state"><div class="icon">🧪</div><div>该漆树暂无采收记录，请先添加采收数据后再查看趋势</div></div>';
         return;
       }
       var layout = {
@@ -96,7 +104,11 @@ function loadTrendChart() {
         trace.line = { color: chartColors[i % chartColors.length], width: 2 };
         trace.marker = { size: 8, color: chartColors[i % chartColors.length] };
       });
+      container.innerHTML = '';
       Plotly.newPlot('trend_chart', data.traces, layout, { responsive: true, displayModeBar: false });
+    })
+    .catch(function() {
+      container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>数据加载失败，请稍后重试</div></div>';
     });
 }
 

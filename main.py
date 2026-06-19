@@ -454,6 +454,18 @@ async def update_harvest(
     if yield_amount < 0:
         errors["yield_amount"] = "出漆量不能为负数"
     old_incision_id = harvest.incision_id
+    if "harvest_date" not in errors and not errors.get("recovery"):
+        target_incision_id = incision_id if incision_id else old_incision_id
+        incision_for_check = db.query(models.Incision).filter(models.Incision.id == target_incision_id).first()
+        if incision_for_check:
+            last_harvest = db.query(models.HarvestBatch).filter(
+                models.HarvestBatch.incision_id == target_incision_id,
+                models.HarvestBatch.id != harvest_id
+            ).order_by(models.HarvestBatch.harvest_date.desc()).first()
+            if last_harvest:
+                recovery_end = last_harvest.harvest_date + timedelta(days=incision_for_check.recovery_days)
+                if h_date < recovery_end:
+                    errors["recovery"] = f"该割口尚在恢复期，下次可采收日期为 {recovery_end.strftime('%Y-%m-%d')}"
     if errors:
         incisions = db.query(models.Incision).all()
         weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
@@ -575,8 +587,13 @@ async def update_weather(
     if errors:
         weather_types = ["晴", "多云", "阴", "小雨", "中雨", "大雨", "雾", "其他"]
         return templates.TemplateResponse("weather/form.html", {
-            "request": request, "weather": weather, "errors": {},
-            "today": date.today().strftime("%Y-%m-%d"), "weather_types": weather_types
+            "request": request, "weather": weather, "errors": errors,
+            "today": date.today().strftime("%Y-%m-%d"), "weather_types": weather_types,
+            "form_data": {
+                "record_date": record_date, "temperature": temperature,
+                "humidity": humidity, "weather_type": weather_type,
+                "wind_speed": wind_speed, "remarks": remarks
+            }
         })
     weather.record_date = r_date
     weather.temperature = temperature

@@ -25,8 +25,8 @@
         <div class="form-group">
           <label>记录日期 <span class="required">*</span></label>
           <input type="date" name="record_date" required max="{{ today }}"
-            value="{{ weather.record_date.strftime('%Y-%m-%d') if weather else today }}">
-          {% if errors.record_date %}
+            value="{{ form_data.record_date if form_data else (weather.record_date.strftime('%Y-%m-%d') if weather else today) }}">
+          {% if errors and errors.record_date %}
           <span class="error-text">{{ errors.record_date }}</span>
           {% endif %}
         </div>
@@ -35,29 +35,30 @@
           <select name="weather_type">
             <option value="">请选择</option>
             {% for wt in weather_types %}
-            <option value="{{ wt }}" {% if weather and weather.weather_type == wt %}selected{% endif %}>{{ wt }}</option>
+            {% set is_selected = (form_data.weather_type if form_data else (weather.weather_type if weather else '')) == wt %}
+            <option value="{{ wt }}" {% if is_selected %}selected{% endif %}>{{ wt }}</option>
             {% endfor %}
           </select>
         </div>
         <div class="form-group">
           <label>温度（°C）</label>
           <input type="number" name="temperature" step="0.1"
-            value="{{ weather.temperature if weather else '' }}">
+            value="{{ form_data.temperature if form_data else (weather.temperature if weather else '') }}">
         </div>
         <div class="form-group">
           <label>湿度（%）</label>
           <input type="number" name="humidity" step="1" min="0" max="100"
-            value="{{ weather.humidity if weather else '' }}">
+            value="{{ form_data.humidity if form_data else (weather.humidity if weather else '') }}">
         </div>
         <div class="form-group">
           <label>风速（m/s）</label>
           <input type="number" name="wind_speed" step="0.1" min="0"
-            value="{{ weather.wind_speed if weather else '' }}">
+            value="{{ form_data.wind_speed if form_data else (weather.wind_speed if weather else '') }}">
         </div>
         <div class="form-group full">
           <label>备注</label>
           <textarea name="remarks" maxlength="500"
-            placeholder="其他天气相关信息...">{{ weather.remarks if weather else '' }}</textarea>
+            placeholder="其他天气相关信息...">{{ form_data.remarks if form_data else (weather.remarks if weather else '') }}</textarea>
         </div>
       </div>
       <div class="form-actions">
