@@ -1329,6 +1329,30 @@ async def list_maintenance(
     for r in records:
         cost_by_type[r.project_type] = cost_by_type.get(r.project_type, 0) + r.total_cost
         labor_by_type[r.project_type] = labor_by_type.get(r.project_type, 0) + r.labor_hours
+
+    filtered_tree_ids = list(set(r.tree_id for r in records))
+    filtered_incision_ids = list(set(r.incision_id for r in records if r.incision_id))
+    yield_query = db.query(models.HarvestBatch)
+    if tree_id:
+        yield_query = yield_query.filter(models.HarvestBatch.tree_id == tree_id)
+    if incision_id:
+        yield_query = yield_query.filter(models.HarvestBatch.incision_id == incision_id)
+    if start_date:
+        try:
+            s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+            yield_query = yield_query.filter(models.HarvestBatch.harvest_date >= s_date)
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            e_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            yield_query = yield_query.filter(models.HarvestBatch.harvest_date <= e_date)
+        except ValueError:
+            pass
+    if not tree_id and not incision_id and filtered_tree_ids:
+        yield_query = yield_query.filter(models.HarvestBatch.tree_id.in_(filtered_tree_ids))
+    total_yield = yield_query.with_entities(func.sum(models.HarvestBatch.yield_amount)).scalar() or 0.0
+    unit_cost = round(total_cost / total_yield, 2) if total_yield > 0 else None
     trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
     incisions = db.query(models.Incision).all()
     project_types = ["施肥", "病虫处理", "树皮养护", "工具消耗", "人工工时"]
@@ -1345,6 +1369,8 @@ async def list_maintenance(
             "total_labor_hours": round(total_labor_hours, 1),
             "total_labor_cost": round(total_labor_cost, 2),
             "total_material_cost": round(total_material_cost, 2),
+            "total_yield": round(total_yield, 2),
+            "unit_cost": unit_cost,
             "record_count": len(records),
             "cost_by_type": {k: round(v, 2) for k, v in cost_by_type.items()},
             "labor_by_type": {k: round(v, 1) for k, v in labor_by_type.items()}
@@ -1408,18 +1434,22 @@ async def create_maintenance(
         trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
         incisions = db.query(models.Incision).all()
         project_types = ["施肥", "病虫处理", "树皮养护", "工具消耗", "人工工时"]
+        latest_records = db.query(models.MaintenanceRecord).order_by(models.MaintenanceRecord.id.desc()).limit(5).all()
+        batch_list = list(set(r.batch_no for r in latest_records if r.batch_no))
         return templates.TemplateResponse("maintenance/form.html", {
             "request": request, "record": None, "trees": trees,
             "incisions": incisions, "project_types": project_types,
             "errors": errors, "today": date.today().strftime("%Y-%m-%d"),
+            "batch_list": batch_list,
             "form_data": {
                 "tree_id": tree_id, "maintenance_date": maintenance_date,
-                "project_type": project_type, "batch_no": batch_no,
+                "project_type": project_type, "batch_no": batch_no or "",
                 "incision_id": incision_id,
-                "quantity": quantity, "unit": unit, "unit_price": unit_price,
+                "quantity": quantity, "unit": unit or "", "unit_price": unit_price,
                 "total_cost": total_cost, "labor_hours": labor_hours,
                 "labor_cost_rate": labor_cost_rate, "labor_cost": labor_cost,
-                "person_in_charge": person_in_charge, "remarks": remarks
+                "person_in_charge": person_in_charge or "",
+                "remarks": remarks or ""
             }
         })
     record = models.MaintenanceRecord(
@@ -1501,10 +1531,25 @@ async def update_maintenance(
         trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
         incisions = db.query(models.Incision).all()
         project_types = ["施肥", "病虫处理", "树皮养护", "工具消耗", "人工工时"]
+        latest_records = db.query(models.MaintenanceRecord).order_by(models.MaintenanceRecord.id.desc()).limit(5).all()
+        batch_list = list(set(r.batch_no for r in latest_records if r.batch_no))
+        if batch_no and batch_no not in batch_list:
+            batch_list.append(batch_no)
         return templates.TemplateResponse("maintenance/form.html", {
             "request": request, "record": record, "trees": trees,
             "incisions": incisions, "project_types": project_types,
-            "errors": errors, "today": date.today().strftime("%Y-%m-%d")
+            "errors": errors, "today": date.today().strftime("%Y-%m-%d"),
+            "batch_list": batch_list,
+            "form_data": {
+                "tree_id": tree_id, "maintenance_date": maintenance_date,
+                "project_type": project_type, "batch_no": batch_no or "",
+                "incision_id": incision_id,
+                "quantity": quantity, "unit": unit or "", "unit_price": unit_price,
+                "total_cost": calc_total_cost, "labor_hours": labor_hours,
+                "labor_cost_rate": labor_cost_rate, "labor_cost": calc_labor_cost,
+                "person_in_charge": person_in_charge or "",
+                "remarks": remarks or ""
+            }
         })
     record.tree_id = tree_id
     record.incision_id = incision_id

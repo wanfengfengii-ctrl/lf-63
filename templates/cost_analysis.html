@@ -109,14 +109,24 @@
     <div class="card-body">
       <div class="chart-select-row">
         <label for="cost_analysis_tree" style="font-weight: 600;">单棵树查询：</label>
-        <select id="cost_analysis_tree" style="min-width: 250px;">
+        <select id="cost_analysis_tree" style="min-width: 200px;">
           {% for t in trees %}
           <option value="{{ t.id }}">{{ t.tree_code }} - {{ t.species or '未标注品种' }}</option>
           {% endfor %}
         </select>
         <button class="btn btn-primary btn-sm" onclick="loadSingleTreeStats()">🔍 查询该树</button>
+        <span style="margin: 0 0.5rem; color: var(--text-light);">|</span>
+        <label for="cost_analysis_incision" style="font-weight: 600;">单个割口查询：</label>
+        <select id="cost_analysis_incision" style="min-width: 250px;">
+          <option value="">请选择割口</option>
+          {% for inc in incisions %}
+          <option value="{{ inc.id }}" data-tree="{{ inc.tree_id }}">{{ inc.tree.tree_code }} - {{ inc.incision_code }} ({{ inc.method }})</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="loadSingleIncisionStats()">🔍 查询割口</button>
       </div>
       <div id="single_tree_stats" style="margin-top: 1rem;"></div>
+      <div id="single_incision_stats" style="margin-top: 1rem;"></div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
         <div>
           <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各漆树养护成本与产量对比</h4>
@@ -296,6 +306,7 @@ function loadMonthlyCostCharts() {
 function loadSingleTreeStats() {
   var treeId = document.getElementById('cost_analysis_tree').value;
   if (!treeId) return;
+  document.getElementById('single_incision_stats').innerHTML = '';
   var container = document.getElementById('single_tree_stats');
   container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
   fetch('/api/cost-stats/tree/' + treeId)
@@ -325,6 +336,46 @@ function loadSingleTreeStats() {
           texttemplate: '%{label}: %{value}元 (%{percent})'
         };
         Plotly.newPlot('single_tree_cost_chart', [pie], {
+          margin: {l: 20, r: 20, t: 20, b: 20},
+          legend: {orientation: 'h', y: -0.1}
+        }, {responsive: true, displayModeBar: false});
+      }
+    });
+}
+
+function loadSingleIncisionStats() {
+  var incisionId = document.getElementById('cost_analysis_incision').value;
+  if (!incisionId) return;
+  document.getElementById('single_tree_stats').innerHTML = '';
+  var container = document.getElementById('single_incision_stats');
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  fetch('/api/cost-stats/incision/' + incisionId)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var costTypes = Object.keys(d.cost_by_type || {});
+      var typeColors = costTypes.map(function(t) { return typeColorMap[t] || '#3498db'; });
+      container.innerHTML =
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">' +
+        '<div class="card" style="box-shadow: none; border: 1px solid #eee; margin: 0;">' +
+        '<div class="card-body" style="padding: 1rem;">' +
+        '<h4 style="margin-bottom: 1rem; color: var(--accent-dark);">✂️ ' + d.tree_code + ' · ' + d.incision_code + ' 统计概览</h4>' +
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">' +
+        '<div><strong>养护成本：</strong>' + d.total_cost + ' 元</div>' +
+        '<div><strong>人工工时：</strong>' + d.total_labor + ' 小时</div>' +
+        '<div><strong>累计产量：</strong>' + d.total_yield + ' kg</div>' +
+        '<div><strong>单位成本：</strong>' + (d.unit_cost ? d.unit_cost + ' 元/kg' : '-') + '</div>' +
+        '<div><strong>养护记录：</strong>' + d.record_count + ' 条</div>' +
+        '</div></div></div>' +
+        '<div id="single_incision_cost_chart" style="height: 220px;"></div></div>';
+      if (costTypes.length > 0) {
+        var pie = {
+          labels: costTypes,
+          values: costTypes.map(function(t) { return d.cost_by_type[t]; }),
+          type: 'pie', hole: 0.4,
+          marker: {colors: typeColors},
+          texttemplate: '%{label}: %{value}元 (%{percent})'
+        };
+        Plotly.newPlot('single_incision_cost_chart', [pie], {
           margin: {l: 20, r: 20, t: 20, b: 20},
           legend: {orientation: 'h', y: -0.1}
         }, {responsive: true, displayModeBar: false});

@@ -59,7 +59,7 @@
         <div class="form-group">
           <label>养护批次</label>
           <input list="batch_suggestions" name="batch_no" id="batch_no_input" maxlength="50"
-            value="{{ form_data.batch_no if form_data else (record.batch_no if record else '') }}"
+            value="{{ (form_data.batch_no if form_data else (record.batch_no if record and record.batch_no else '')) or '' }}"
             placeholder="如：2024-春季施肥-001（可从历史批次选择）">
           <datalist id="batch_suggestions">
             {% if batch_list %}
@@ -100,7 +100,7 @@
         <div class="form-group">
           <label>单位</label>
           <input type="text" name="unit" maxlength="20"
-            value="{{ form_data.unit if form_data else (record.unit if record else '') }}"
+            value="{{ (form_data.unit if form_data else (record.unit if record and record.unit else '')) or '' }}"
             placeholder="如：kg、次、个" id="unit_input">
         </div>
         <div class="form-group">
@@ -152,7 +152,7 @@
         <div class="form-group">
           <label>负责人</label>
           <input type="text" name="person_in_charge" maxlength="50"
-            value="{{ form_data.person_in_charge if form_data else (record.person_in_charge if record else '') }}"
+            value="{{ (form_data.person_in_charge if form_data else (record.person_in_charge if record and record.person_in_charge else '')) or '' }}"
             placeholder="负责人姓名">
         </div>
       </div>
@@ -170,7 +170,7 @@
         <div class="form-group full">
           <label>备注</label>
           <textarea name="remarks" maxlength="500" rows="3"
-            placeholder="养护详情备注...">{{ form_data.remarks if form_data else (record.remarks if record else '') }}</textarea>
+            placeholder="养护详情备注...">{{ (form_data.remarks if form_data else (record.remarks if record and record.remarks else '')) or '' }}</textarea>
         </div>
       </div>
       <div class="form-actions">

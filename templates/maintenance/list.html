@@ -108,6 +108,25 @@
           {% endif %}
         </div>
       </div>
+      <div class="stat-card {% if stats.unit_cost and stats.unit_cost > 500 %}danger{% elif stats.unit_cost and stats.unit_cost > 200 %}warning{% endif %}">
+        <div class="stat-label">筛选区间产漆量</div>
+        <div class="stat-value">{{ stats.total_yield }} <small>kg</small></div>
+      </div>
+      <div class="stat-card {% if stats.unit_cost and stats.unit_cost > 500 %}danger{% elif stats.unit_cost and stats.unit_cost > 200 %}warning{% endif %}">
+        <div class="stat-label">单位出漆成本</div>
+        <div class="stat-value">
+          {% if stats.unit_cost %}
+          {{ stats.unit_cost }} <small>元/kg</small>
+          {% else %}
+          - <small>-</small>
+          {% endif %}
+        </div>
+        {% if stats.unit_cost and stats.unit_cost > 500 %}
+        <div style="font-size: 0.8rem; color: #e74c3c;">⚠️ 超过500元/kg预警线</div>
+        {% elif stats.unit_cost and stats.unit_cost > 200 %}
+        <div style="font-size: 0.8rem; color: #f39c12;">⚡ 需关注成本控制</div>
+        {% endif %}
+      </div>
     </div>
     {% if stats.cost_by_type %}
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
