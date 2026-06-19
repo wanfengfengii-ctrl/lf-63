@@ -194,17 +194,20 @@ class MaintenanceBase(BaseModel):
     incision_id: Optional[int] = None
     maintenance_date: date
     project_type: str
+    batch_no: Optional[str] = None
     quantity: Optional[float] = 0.0
     unit: Optional[str] = None
     unit_price: Optional[float] = 0.0
     total_cost: Optional[float] = 0.0
     labor_hours: Optional[float] = 0.0
+    labor_cost_rate: Optional[float] = 0.0
+    labor_cost: Optional[float] = 0.0
     person_in_charge: Optional[str] = None
     remarks: Optional[str] = None
 
 
 class MaintenanceCreate(MaintenanceBase):
-    @field_validator("quantity", "unit_price", "total_cost", "labor_hours")
+    @field_validator("quantity", "unit_price", "total_cost", "labor_hours", "labor_cost_rate", "labor_cost")
     @classmethod
     def non_negative(cls, v):
         if v is not None and v < 0:
@@ -213,7 +216,7 @@ class MaintenanceCreate(MaintenanceBase):
 
 
 class MaintenanceUpdate(MaintenanceBase):
-    @field_validator("quantity", "unit_price", "total_cost", "labor_hours")
+    @field_validator("quantity", "unit_price", "total_cost", "labor_hours", "labor_cost_rate", "labor_cost")
     @classmethod
     def non_negative(cls, v):
         if v is not None and v < 0:

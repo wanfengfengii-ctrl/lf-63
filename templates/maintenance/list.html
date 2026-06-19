@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}养护成本管理 - 漆树采收管理系统{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">💰 养护成本与人工工时管理</h1>
+  <div style="display: flex; gap: 0.75rem;">
+    <a href="/cost-analysis" class="btn btn-secondary">📊 成本分析</a>
+    <a href="/maintenance/new" class="btn btn-primary">+ 新增养护记录</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header">
+    <span>🔍 筛选条件</span>
+    <button type="button" class="btn btn-outline btn-sm" onclick="resetFilters()">重置筛选</button>
+  </div>
+  <div class="card-body">
+    <form method="GET" action="/maintenance" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+      <div class="form-group" style="margin: 0;">
+        <label>漆树</label>
+        <select name="tree_id" onchange="filterIncisions()">
+          <option value="">全部漆树</option>
+          {% for t in trees %}
+          <option value="{{ t.id }}" data-tree="{{ t.id }}"
+            {% if filters.tree_id == t.id %}selected{% endif %}>
+            {{ t.tree_code }} - {{ t.location or '' }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin: 0;">
+        <label>关联割口</label>
+        <select name="incision_id" id="incision_filter">
+          <option value="">全部割口</option>
+          {% for inc in incisions %}
+          <option value="{{ inc.id }}" data-tree="{{ inc.tree_id }}"
+            {% if filters.incision_id == inc.id %}selected{% endif %}>
+            {{ inc.tree.tree_code }} - {{ inc.incision_code }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin: 0;">
+        <label>项目类型</label>
+        <select name="project_type">
+          <option value="">全部类型</option>
+          {% for pt in project_types %}
+          <option value="{{ pt }}" {% if filters.project_type == pt %}selected{% endif %}>{{ pt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin: 0;">
+        <label>养护批次</label>
+        <input type="text" name="batch_no" value="{{ filters.batch_no or '' }}" placeholder="输入批次关键词">
+      </div>
+      <div class="form-group" style="margin: 0;">
+        <label>开始日期</label>
+        <input type="date" name="start_date" value="{{ filters.start_date or '' }}">
+      </div>
+      <div class="form-group" style="margin: 0;">
+        <label>结束日期</label>
+        <input type="date" name="end_date" value="{{ filters.end_date or '' }}">
+      </div>
+      <div class="form-group" style="margin: 0; display: flex; align-items: flex-end;">
+        <button type="submit" class="btn btn-primary" style="width: 100%;">🔍 筛选</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header">
+    <span>📊 统计汇总{% if filters %}（筛选结果）{% endif %}</span>
+  </div>
+  <div class="card-body">
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin: 0 0 1.5rem 0;">
+      <div class="stat-card">
+        <div class="stat-label">记录数量</div>
+        <div class="stat-value">{{ stats.record_count }} <small>条</small></div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-label">养护总成本</div>
+        <div class="stat-value">{{ stats.total_cost }} <small>元</small></div>
+      </div>
+      <div class="stat-card info">
+        <div class="stat-label">物料成本</div>
+        <div class="stat-value">{{ stats.total_material_cost }} <small>元</small></div>
+      </div>
+      <div class="stat-card danger">
+        <div class="stat-label">人工成本</div>
+        <div class="stat-value">{{ stats.total_labor_cost }} <small>元</small></div>
+      </div>
+      <div class="stat-card info">
+        <div class="stat-label">累计人工工时</div>
+        <div class="stat-value">{{ stats.total_labor_hours }} <small>小时</small></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">平均人工成本率</div>
+        <div class="stat-value">
+          {% if stats.total_labor_hours > 0 %}
+          {{ (stats.total_labor_cost / stats.total_labor_hours)|round(2) }} <small>元/小时</small>
+          {% else %}
+          - <small>-</small>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% if stats.cost_by_type %}
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--text-light); font-size: 0.9rem;">各项目成本分布（元）</h4>
+        <div id="cost_type_bar" style="height: 250px;"></div>
+      </div>
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--text-light); font-size: 0.9rem;">各项目工时分布（小时）</h4>
+        <div id="labor_type_bar" style="height: 250px;"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if records %}
+    <table>
+      <thead>
+        <tr>
+          <th>养护日期</th>
+          <th>养护批次</th>
+          <th>漆树</th>
+          <th>割口</th>
+          <th>项目类型</th>
+          <th>物料</th>
+          <th>物料成本</th>
+          <th>人工工时</th>
+          <th>人工成本</th>
+          <th>总成本</th>
+          <th>负责人</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.maintenance_date.strftime('%Y-%m-%d') }}</td>
+          <td>
+            {% if r.batch_no %}
+            <span class="badge badge-info">{{ r.batch_no }}</span>
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td><a href="/trees/{{ r.tree_id }}">{{ r.tree.tree_code }}</a></td>
+          <td>{{ r.incision.incision_code if r.incision else '-' }}</td>
+          <td>
+            {% if r.project_type == '施肥' %}<span class="badge badge-success">{{ r.project_type }}</span>
+            {% elif r.project_type == '病虫处理' %}<span class="badge badge-danger">{{ r.project_type }}</span>
+            {% elif r.project_type == '树皮养护' %}<span class="badge badge-info">{{ r.project_type }}</span>
+            {% elif r.project_type == '工具消耗' %}<span class="badge badge-warning">{{ r.project_type }}</span>
+            {% elif r.project_type == '人工工时' %}<span class="badge badge-secondary">{{ r.project_type }}</span>
+            {% else %}{{ r.project_type }}{% endif %}
+          </td>
+          <td>{{ r.quantity }} {{ r.unit or '' }}</td>
+          <td>{{ (r.total_cost - r.labor_cost)|round(2) }}</td>
+          <td>{{ r.labor_hours }} h</td>
+          <td>{{ r.labor_cost|round(2) }}</td>
+          <td><strong style="color: var(--accent-dark);">{{ r.total_cost|round(2) }}</strong> 元</td>
+          <td>{{ r.person_in_charge or '-' }}</td>
+          <td class="action-col">
+            <a href="/maintenance/{{ r.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+            <form method="POST" action="/maintenance/{{ r.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该养护记录吗？删除后将重新计算成本统计。');">
+              <button type="submit" class="delete-btn">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">💰</div>
+      <div>暂无养护记录{% if filters %}（符合筛选条件）{% endif %}</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">记录施肥、病虫处理、树皮养护等养护活动，追踪成本投入</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+var chartColors = ['#27ae60', '#e74c3c', '#2980b9', '#f39c12', '#8b4513'];
+
+function filterIncisions() {
+  var treeSelect = document.querySelector('select[name="tree_id"]');
+  var incisionSelect = document.getElementById('incision_filter');
+  var treeId = treeSelect.value;
+  var options = incisionSelect.querySelectorAll('option');
+  options.forEach(function(opt) {
+    if (opt.value === '' || opt.dataset.tree === treeId || !treeId) {
+      opt.style.display = '';
+    } else {
+      opt.style.display = 'none';
+      if (opt.selected) opt.selected = false;
+    }
+  });
+}
+
+function resetFilters() {
+  window.location.href = '/maintenance';
+}
+
+{% if stats.cost_by_type %}
+document.addEventListener('DOMContentLoaded', function() {
+  var costTypes = Object.keys({{ stats.cost_by_type|tojson }});
+  var costValues = Object.values({{ stats.cost_by_type|tojson }});
+  var laborValues = Object.values({{ stats.labor_by_type|tojson }});
+  var typeColorMap = {'施肥': '#27ae60', '病虫处理': '#e74c3c', '树皮养护': '#2980b9', '工具消耗': '#f39c12', '人工工时': '#8b4513'};
+  var barColors = costTypes.map(function(t) { return typeColorMap[t] || '#3498db'; });
+
+  var costTrace = {
+    x: costTypes,
+    y: costValues,
+    type: 'bar',
+    marker: {color: barColors},
+    text: costValues.map(function(v) { return v + '元'; }),
+    textposition: 'outside'
+  };
+  Plotly.newPlot('cost_type_bar', [costTrace], {
+    margin: {l: 50, r: 20, t: 20, b: 50},
+    yaxis: {title: '金额 (元)'}
+  }, {responsive: true, displayModeBar: false});
+
+  var laborTrace = {
+    x: costTypes,
+    y: laborValues,
+    type: 'bar',
+    marker: {color: barColors},
+    text: laborValues.map(function(v) { return v + 'h'; }),
+    textposition: 'outside'
+  };
+  Plotly.newPlot('labor_type_bar', [laborTrace], {
+    margin: {l: 50, r: 20, t: 20, b: 50},
+    yaxis: {title: '工时 (小时)'}
+  }, {responsive: true, displayModeBar: false});
+});
+{% endif %}
+
+filterIncisions();
+</script>
+
+{% endblock %}

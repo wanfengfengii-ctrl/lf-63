@@ -31,6 +31,14 @@
     <div class="stat-label">待执行计划</div>
     <div class="stat-value">{{ plan_count }} <small>个</small></div>
   </div>
+  <div class="stat-card warning">
+    <div class="stat-label">累计养护成本</div>
+    <div class="stat-value">{{ total_maintenance_cost }} <small>元</small></div>
+  </div>
+  <div class="stat-card info">
+    <div class="stat-label">累计人工工时</div>
+    <div class="stat-value">{{ total_labor_hours }} <small>小时</small></div>
+  </div>
 </div>
 
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
@@ -101,7 +109,7 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
   <div class="card">
     <div class="card-header">
-      <span>�📅 采收提醒</span>
+      <span>�� 采收提醒</span>
       <a href="/harvests/new" class="btn btn-primary btn-sm">新增采收</a>
     </div>
     <div class="card-body">
@@ -158,7 +166,74 @@
         <a href="/charts" class="btn btn-secondary" style="justify-content: center; padding: 1rem;">
           📈 查看图表
         </a>
+        <a href="/maintenance/new" class="btn btn-primary" style="justify-content: center; padding: 1rem;">
+          💰 新增养护
+        </a>
       </div>
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+  <div class="card">
+    <div class="card-header">
+      <span>💰 高成本预警</span>
+      <a href="/maintenance" class="btn btn-warning btn-sm">查看养护记录</a>
+    </div>
+    <div class="card-body">
+      {% if cost_warnings and cost_warnings.high_cost %}
+      <ul class="reminder-list">
+        {% for w in cost_warnings.high_cost %}
+        <li class="reminder-item" style="border-left: 3px solid #e67e22;">
+          <div class="reminder-info">
+            <span class="reminder-tree">
+              {% if w.type == 'tree' %}🌳 {{ w.tree_code }}{% else %}✂️ {{ w.tree_code }} · {{ w.incision_code }}{% endif %}
+            </span>
+            <span class="reminder-sub">养护成本: {{ w.total_cost }}元 · 产量: {{ w.total_yield }}kg</span>
+            <span class="reminder-sub" style="color: #e67e22;">单位出漆成本: {{ w.unit_cost }}元/kg（超过500元/kg预警线）</span>
+          </div>
+          <span class="badge badge-warning">高成本</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <div>暂无高成本预警</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">所有漆树单位出漆成本在正常范围内</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span>📉 低产出预警</span>
+      <a href="/maintenance" class="btn btn-danger btn-sm">查看养护记录</a>
+    </div>
+    <div class="card-body">
+      {% if cost_warnings and cost_warnings.low_output %}
+      <ul class="reminder-list">
+        {% for w in cost_warnings.low_output %}
+        <li class="reminder-item" style="border-left: 3px solid #c0392b;">
+          <div class="reminder-info">
+            <span class="reminder-tree">
+              {% if w.type == 'tree' %}🌳 {{ w.tree_code }}{% else %}✂️ {{ w.tree_code }} · {{ w.incision_code }}{% endif %}
+            </span>
+            <span class="reminder-sub">已投入养护成本: {{ w.total_cost }}元 · 人工: {{ w.total_labor }}小时</span>
+            <span class="reminder-sub" style="color: #c0392b;">有养护投入但尚无产出，需关注</span>
+          </div>
+          <span class="badge badge-danger">低产出</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <div>暂无低产出预警</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">所有投入养护的漆树都有相应产出</div>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

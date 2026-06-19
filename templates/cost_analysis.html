@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+{% block title %}成本分析 - 漆树采收管理系统{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">📊 养护成本综合分析</h1>
+  <div style="display: flex; gap: 0.75rem;">
+    <a href="/charts" class="btn btn-outline">📈 数据图表</a>
+    <a href="/maintenance" class="btn btn-secondary">💰 养护记录</a>
+    <button class="btn btn-primary" onclick="refreshAllCharts()">🔄 刷新数据</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header">
+    <span>💼 全局投入产出汇总</span>
+  </div>
+  <div class="card-body">
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 0;">
+      <div class="stat-card">
+        <div class="stat-label">养护记录总数</div>
+        <div class="stat-value">{{ summary.record_count }} <small>条</small></div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-label">养护总成本</div>
+        <div class="stat-value">{{ summary.total_cost }} <small>元</small></div>
+      </div>
+      <div class="stat-card info">
+        <div class="stat-label">物料成本占比</div>
+        <div class="stat-value">
+          {% if summary.total_cost > 0 %}
+          {{ (summary.total_material_cost / summary.total_cost * 100)|round(1) }} <small>%</small>
+          {% else %}-<small>%</small>{% endif %}
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-light);">{{ summary.total_material_cost }} 元</div>
+      </div>
+      <div class="stat-card danger">
+        <div class="stat-label">人工成本占比</div>
+        <div class="stat-value">
+          {% if summary.total_cost > 0 %}
+          {{ (summary.total_labor_cost / summary.total_cost * 100)|round(1) }} <small>%</small>
+          {% else %}-<small>%</small>{% endif %}
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-light);">{{ summary.total_labor_cost }} 元</div>
+      </div>
+      <div class="stat-card info">
+        <div class="stat-label">累计人工工时</div>
+        <div class="stat-value">{{ summary.total_labor }} <small>小时</small></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">平均人工费率</div>
+        <div class="stat-value">{{ summary.avg_labor_rate }} <small>元/小时</small></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">累计产漆量</div>
+        <div class="stat-value">{{ summary.total_yield }} <small>kg</small></div>
+      </div>
+      <div class="stat-card {% if summary.unit_cost and summary.unit_cost > 500 %}danger{% elif summary.unit_cost and summary.unit_cost > 200 %}warning{% endif %}">
+        <div class="stat-label">整体单位出漆成本</div>
+        <div class="stat-value">
+          {% if summary.unit_cost %}
+          {{ summary.unit_cost }} <small>元/kg</small>
+          {% else %}
+          - <small>-</small>
+          {% endif %}
+        </div>
+        {% if summary.unit_cost and summary.unit_cost > 500 %}
+        <div style="font-size: 0.8rem; color: #e74c3c;">⚠️ 超过500元/kg预警线</div>
+        {% elif summary.unit_cost and summary.unit_cost > 200 %}
+        <div style="font-size: 0.8rem; color: #f39c12;">⚡ 需关注成本控制</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>📈 月度成本投入与产漆趋势</h3>
+    </div>
+    <div class="card-body">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">月度成本分布（物料 vs 人工）</h4>
+          <div id="monthly_cost_chart" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">月度成本 vs 产量 vs 单位成本趋势</h4>
+          <div id="cost_yield_trend_chart" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>🎯 各漆树投入产出对比分析</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-select-row">
+        <label for="cost_analysis_tree" style="font-weight: 600;">单棵树查询：</label>
+        <select id="cost_analysis_tree" style="min-width: 250px;">
+          {% for t in trees %}
+          <option value="{{ t.id }}">{{ t.tree_code }} - {{ t.species or '未标注品种' }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="loadSingleTreeStats()">🔍 查询该树</button>
+      </div>
+      <div id="single_tree_stats" style="margin-top: 1rem;"></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各漆树养护成本与产量对比</h4>
+          <div id="all_trees_cost_yield" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">单位出漆成本 vs 异常率散点图</h4>
+          <div id="unit_cost_abnormal" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+      </div>
+      <div id="trees_detail_table" style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">漆树投入产出明细</h4>
+        <div id="trees_table_content" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>🔧 养护批次统计分析</h3>
+    </div>
+    <div class="card-body">
+      <div id="batch_list_container">
+        <div class="empty-state"><div class="icon">⏳</div><div>正在加载养护批次数据...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>🌿 养护方式对产量与恢复的影响分析</h3>
+    </div>
+    <div class="card-body">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割法平均产量 vs 单位成本</h4>
+          <div id="method_yield_cost" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各割法异常率 vs 恢复质量</h4>
+          <div id="method_recovery" style="height: 350px;">
+            <div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>
+          </div>
+        </div>
+      </div>
+      <div id="method_detail_table" style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">割法综合评价表</h4>
+        <div id="method_table_content" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>🚨 成本预警列表</h3>
+    </div>
+    <div class="card-body">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.75rem; color: #e67e22;">💰 高成本预警（单位出漆成本 > 500元/kg）</h4>
+          {% if cost_warnings.high_cost %}
+          <ul class="reminder-list">
+            {% for w in cost_warnings.high_cost %}
+            <li class="reminder-item" style="border-left: 3px solid #e67e22;">
+              <div class="reminder-info">
+                <span class="reminder-tree">
+                  {% if w.type == 'tree' %}🌳 <a href="/trees/{{ w.tree_id }}">{{ w.tree_code }}</a>
+                  {% else %}✂️ {{ w.tree_code }} · {{ w.incision_code }}{% endif %}
+                </span>
+                <span class="reminder-sub">养护成本: {{ w.total_cost }}元 · 产量: {{ w.total_yield }}kg</span>
+                <span class="reminder-sub" style="color: #e67e22;">单位成本: {{ w.unit_cost }}元/kg</span>
+              </div>
+              <span class="badge badge-warning">高成本</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="empty-state"><div class="icon">✅</div><div>暂无高成本预警</div></div>
+          {% endif %}
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.75rem; color: #c0392b;">📉 低产出预警（有投入无产出）</h4>
+          {% if cost_warnings.low_output %}
+          <ul class="reminder-list">
+            {% for w in cost_warnings.low_output %}
+            <li class="reminder-item" style="border-left: 3px solid #c0392b;">
+              <div class="reminder-info">
+                <span class="reminder-tree">
+                  {% if w.type == 'tree' %}🌳 <a href="/trees/{{ w.tree_id }}">{{ w.tree_code }}</a>
+                  {% else %}✂️ {{ w.tree_code }} · {{ w.incision_code }}{% endif %}
+                </span>
+                <span class="reminder-sub">已投入: {{ w.total_cost }}元 · 人工: {{ w.total_labor }}小时</span>
+                <span class="reminder-sub" style="color: #c0392b;">尚无对应产出，需关注</span>
+              </div>
+              <span class="badge badge-danger">低产出</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="empty-state"><div class="icon">✅</div><div>暂无低产出预警</div></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+var chartColors = ['#2d5016', '#8b4513', '#d4a574', '#4a7c23', '#a0522d', '#c0392b', '#2980b9', '#e67e22'];
+var typeColorMap = {'施肥': '#27ae60', '病虫处理': '#e74c3c', '树皮养护': '#2980b9', '工具消耗': '#f39c12', '人工工时': '#8b4513'};
+
+function refreshAllCharts() {
+  loadMonthlyCostCharts();
+  loadAllTreesAnalysis();
+  loadBatchAnalysis();
+  loadMethodImpactAnalysis();
+}
+
+function loadMonthlyCostCharts() {
+  fetch('/api/monthly-cost-trend')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.months.length === 0) {
+        ['monthly_cost_chart', 'cost_yield_trend_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无数据</div></div>';
+        });
+        return;
+      }
+      var matTrace = {
+        x: data.months, y: data.material_costs, name: '物料成本', type: 'bar',
+        marker: {color: '#2980b9'}, stackgroup: 'cost'
+      };
+      var labTrace = {
+        x: data.months, y: data.labor_costs, name: '人工成本', type: 'bar',
+        marker: {color: '#c0392b'}, stackgroup: 'cost'
+      };
+      Plotly.newPlot('monthly_cost_chart', [matTrace, labTrace], {
+        barmode: 'stack',
+        yaxis: {title: '金额 (元)'},
+        legend: {orientation: 'h', y: -0.2},
+        margin: {l: 60, r: 20, t: 20, b: 60},
+        xaxis: {tickangle: -30}
+      }, {responsive: true, displayModeBar: false});
+
+      var costTrace = {
+        x: data.months, y: data.total_costs, name: '养护成本(元)',
+        type: 'scatter', mode: 'lines+markers', yaxis: 'y1', line: {color: '#e67e22', width: 3}
+      };
+      var yieldTrace = {
+        x: data.months, y: data.yields, name: '产漆量(kg)',
+        type: 'bar', yaxis: 'y2', marker: {color: '#27ae60'}
+      };
+      Plotly.newPlot('cost_yield_trend_chart', [costTrace, yieldTrace], {
+        yaxis: {title: '金额 (元)', side: 'left'},
+        yaxis2: {title: '产量 (kg)', overlaying: 'y', side: 'right'},
+        legend: {orientation: 'h', y: -0.2},
+        margin: {l: 60, r: 60, t: 20, b: 60},
+        xaxis: {tickangle: -30}
+      }, {responsive: true, displayModeBar: false});
+    });
+}
+
+function loadSingleTreeStats() {
+  var treeId = document.getElementById('cost_analysis_tree').value;
+  if (!treeId) return;
+  var container = document.getElementById('single_tree_stats');
+  container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  fetch('/api/cost-stats/tree/' + treeId)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var costTypes = Object.keys(d.cost_by_type || {});
+      var typeColors = costTypes.map(function(t) { return typeColorMap[t] || '#3498db'; });
+      container.innerHTML =
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">' +
+        '<div class="card" style="box-shadow: none; border: 1px solid #eee; margin: 0;">' +
+        '<div class="card-body" style="padding: 1rem;">' +
+        '<h4 style="margin-bottom: 1rem; color: var(--accent-dark);">🌳 ' + d.tree_code + ' 统计概览</h4>' +
+        '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">' +
+        '<div><strong>养护成本：</strong>' + d.total_cost + ' 元</div>' +
+        '<div><strong>人工工时：</strong>' + d.total_labor + ' 小时</div>' +
+        '<div><strong>累计产量：</strong>' + d.total_yield + ' kg</div>' +
+        '<div><strong>单位成本：</strong>' + (d.unit_cost ? d.unit_cost + ' 元/kg' : '-') + '</div>' +
+        '<div><strong>养护记录：</strong>' + d.record_count + ' 条</div>' +
+        '</div></div></div>' +
+        '<div id="single_tree_cost_chart" style="height: 220px;"></div></div>';
+      if (costTypes.length > 0) {
+        var pie = {
+          labels: costTypes,
+          values: costTypes.map(function(t) { return d.cost_by_type[t]; }),
+          type: 'pie', hole: 0.4,
+          marker: {colors: typeColors},
+          texttemplate: '%{label}: %{value}元 (%{percent})'
+        };
+        Plotly.newPlot('single_tree_cost_chart', [pie], {
+          margin: {l: 20, r: 20, t: 20, b: 20},
+          legend: {orientation: 'h', y: -0.1}
+        }, {responsive: true, displayModeBar: false});
+      }
+    });
+}
+
+function loadAllTreesAnalysis() {
+  fetch('/api/maintenance-yield-analysis')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.trees.length === 0) {
+        ['all_trees_cost_yield', 'unit_cost_abnormal', 'trees_table_content'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无数据</div></div>';
+        });
+        return;
+      }
+      var costTrace = {
+        x: data.tree_codes, y: data.total_costs, name: '养护成本(元)',
+        type: 'bar', marker: {color: '#e67e22'}
+      };
+      var yieldTrace = {
+        x: data.tree_codes, y: data.total_yields, name: '产量(kg)',
+        type: 'bar', marker: {color: '#27ae60'}
+      };
+      Plotly.newPlot('all_trees_cost_yield', [costTrace, yieldTrace], {
+        barmode: 'group',
+        yaxis: {title: '金额(元) / 产量(kg)'},
+        legend: {orientation: 'h', y: -0.2},
+        margin: {l: 60, r: 20, t: 20, b: 80},
+        xaxis: {tickangle: -30}
+      }, {responsive: true, displayModeBar: false});
+
+      var scatter = {
+        x: data.unit_costs, y: data.abnormal_rates,
+        mode: 'markers+text', text: data.tree_codes, textposition: 'top center',
+        marker: {
+          size: 12,
+          color: data.unit_costs.map(function(v) {
+            return v > 500 ? '#e74c3c' : v > 200 ? '#f39c12' : '#27ae60';
+          }),
+          line: {color: '#2d5016', width: 1}
+        },
+        type: 'scatter'
+      };
+      var maxAbn = Math.max.apply(null, data.abnormal_rates.concat([10]));
+      Plotly.newPlot('unit_cost_abnormal', [scatter], {
+        xaxis: {title: '单位出漆成本（元/kg）'},
+        yaxis: {title: '异常率 (%)'},
+        margin: {l: 60, r: 30, t: 20, b: 60},
+        hovermode: 'closest',
+        shapes: [{
+          type: 'line', x0: 500, x1: 500, y0: 0, y1: maxAbn + 5,
+          line: {color: 'red', width: 2, dash: 'dash'}
+        }]
+      }, {responsive: true, displayModeBar: false});
+
+      var tbl = '<table><thead><tr><th>漆树编号</th><th>养护成本</th><th>人工工时</th><th>产量</th>' +
+        '<th>单位出漆成本</th><th>异常率</th><th>记录数</th><th>成本结构</th></tr></thead><tbody>';
+      data.trees.forEach(function(d) {
+        var cls = d.unit_cost > 500 ? 'background: #fdecea;' : d.unit_cost > 200 ? 'background: #fff4e5;' : '';
+        var structure = Object.entries(d.cost_by_type || {}).map(function(e) {
+          return e[0] + ':' + e[1] + '元';
+        }).join(' | ') || '-';
+        tbl += '<tr style="' + cls + '">';
+        tbl += '<td><a href="/trees/' + d.tree_id + '">' + d.tree_code + '</a></td>';
+        tbl += '<td><strong>' + d.total_cost + ' 元</strong></td>';
+        tbl += '<td>' + d.total_labor + ' h</td>';
+        tbl += '<td>' + d.total_yield + ' kg</td>';
+        tbl += '<td>';
+        if (d.unit_cost !== null) {
+          if (d.unit_cost > 500) tbl += '<span class="badge badge-danger">' + d.unit_cost + '元/kg</span>';
+          else if (d.unit_cost > 200) tbl += '<span class="badge badge-warning">' + d.unit_cost + '元/kg</span>';
+          else tbl += '<span class="badge badge-success">' + d.unit_cost + '元/kg</span>';
+        } else tbl += '-';
+        tbl += '</td><td>' + d.abnormal_rate + '%</td><td>' + d.record_count + '</td>';
+        tbl += '<td style="font-size: 0.8rem; max-width: 250px;">' + structure + '</td>';
+        tbl += '</tr>';
+      });
+      tbl += '</tbody></table>';
+      document.getElementById('trees_table_content').innerHTML = tbl;
+    });
+}
+
+function loadBatchAnalysis() {
+  fetch('/api/maintenance-batch-analysis')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var container = document.getElementById('batch_list_container');
+      if (data.batches.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📦</div>' +
+          '<div>暂无养护批次</div>' +
+          '<div style="margin-top: 0.5rem; font-size: 0.85rem;">在养护记录中填写"养护批次"字段即可按批次汇总</div></div>';
+        return;
+      }
+      var html = '<table><thead><tr><th>养护批次</th><th>日期范围</th><th>涉及漆树</th>' +
+        '<th>涉及割口</th><th>记录数</th><th>总成本</th><th>物料成本</th><th>人工成本</th>' +
+        '<th>人工工时</th><th>成本结构</th></tr></thead><tbody>';
+      data.batches.forEach(function(b) {
+        var structure = Object.entries(b.cost_by_type).map(function(e) {
+          return '<span class="badge badge-secondary" style="margin: 2px;">' + e[0] + ': ' + e[1] + '元</span>';
+        }).join(' ') || '-';
+        html += '<tr>';
+        html += '<td><strong>' + b.batch_no + '</strong></td>';
+        html += '<td>' + b.start_date + ' ~ ' + b.end_date + '</td>';
+        html += '<td>' + b.tree_count + ' 棵</td>';
+        html += '<td>' + b.incision_count + ' 个</td>';
+        html += '<td>' + b.record_count + '</td>';
+        html += '<td style="color: #8b4513; font-weight: 600;">' + b.total_cost + ' 元</td>';
+        html += '<td>' + b.material_cost + '</td>';
+        html += '<td>' + b.labor_cost + '</td>';
+        html += '<td>' + b.total_labor + ' h</td>';
+        html += '<td style="max-width: 300px;">' + structure + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    });
+}
+
+function loadMethodImpactAnalysis() {
+  fetch('/api/method-recovery-impact')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.method_summary.length === 0) {
+        ['method_yield_cost', 'method_recovery', 'method_table_content'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无数据</div></div>';
+        });
+        return;
+      }
+      var methods = data.method_summary.map(function(m) { return m.method; });
+      var avgYields = data.method_summary.map(function(m) { return m.avg_yield; });
+      var avgCosts = data.method_summary.map(function(m) { return m.avg_unit_cost; });
+      var avgAbn = data.method_summary.map(function(m) { return m.avg_abnormal_rate; });
+      var avgQuality = data.method_summary.map(function(m) { return m.avg_recovery_quality; });
+      var mColors = chartColors.slice(0, methods.length);
+
+      var y1Trace = {
+        x: methods, y: avgYields, name: '平均产量(kg/次)', type: 'bar',
+        marker: {color: '#27ae60'}, yaxis: 'y1'
+      };
+      var y2Trace = {
+        x: methods, y: avgCosts, name: '单位成本(元/kg)', type: 'scatter',
+        mode: 'lines+markers', line: {color: '#e67e22', width: 3}, yaxis: 'y2'
+      };
+      Plotly.newPlot('method_yield_cost', [y1Trace, y2Trace], {
+        yaxis: {title: '平均产量 (kg/次)', side: 'left'},
+        yaxis2: {title: '单位成本 (元/kg)', overlaying: 'y', side: 'right'},
+        legend: {orientation: 'h', y: -0.2},
+        margin: {l: 60, r: 60, t: 20, b: 60},
+        xaxis: {tickangle: -20}
+      }, {responsive: true, displayModeBar: false});
+
+      var a1Trace = {
+        x: methods, y: avgAbn, name: '异常率(%)', type: 'bar',
+        marker: {color: '#e74c3c'}, yaxis: 'y1'
+      };
+      var a2Trace = {
+        x: methods, y: avgQuality, name: '恢复质量评分', type: 'scatter',
+        mode: 'lines+markers', line: {color: '#2980b9', width: 3}, yaxis: 'y2'
+      };
+      Plotly.newPlot('method_recovery', [a1Trace, a2Trace], {
+        yaxis: {title: '异常率 (%)', side: 'left', range: [0, Math.max(30, Math.max.apply(null, avgAbn) + 10)]},
+        yaxis2: {title: '恢复质量 (满分5分)', overlaying: 'y', side: 'right', range: [0, 5.5]},
+        legend: {orientation: 'h', y: -0.2},
+        margin: {l: 60, r: 60, t: 20, b: 60},
+        xaxis: {tickangle: -20}
+      }, {responsive: true, displayModeBar: false});
+
+      var tbl = '<table><thead><tr><th>割法</th><th>割口数</th><th>平均单次产量</th>' +
+        '<th>平均单位成本</th><th>平均异常率</th><th>恢复质量评分</th><th>综合评价</th></tr></thead><tbody>';
+      data.method_summary.forEach(function(m) {
+        var score = 0;
+        if (m.avg_yield >= 0.5) score += 2; else if (m.avg_yield >= 0.3) score += 1;
+        if (m.avg_unit_cost <= 200) score += 2; else if (m.avg_unit_cost <= 500) score += 1;
+        if (m.avg_abnormal_rate <= 10) score += 2; else if (m.avg_abnormal_rate <= 30) score += 1;
+        if (m.avg_recovery_quality >= 4) score += 2; else if (m.avg_recovery_quality >= 3) score += 1;
+        var evalCls = score >= 7 ? 'badge-success' : score >= 4 ? 'badge-warning' : 'badge-danger';
+        var evalTxt = score >= 7 ? '优秀' : score >= 4 ? '良好' : '待改进';
+        tbl += '<tr>';
+        tbl += '<td><strong>' + m.method + '</strong></td>';
+        tbl += '<td>' + m.incision_count + '</td>';
+        tbl += '<td>' + m.avg_yield + ' kg/次</td>';
+        tbl += '<td>' + m.avg_unit_cost + ' 元/kg</td>';
+        tbl += '<td>' + m.avg_abnormal_rate + '%</td>';
+        tbl += '<td>' + m.avg_recovery_quality + ' / 5</td>';
+        tbl += '<td><span class="badge ' + evalCls + '">' + evalTxt + ' (' + score + '/8)</span></td>';
+        tbl += '</tr>';
+      });
+      tbl += '</tbody></table>';
+      document.getElementById('method_table_content').innerHTML = tbl;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  refreshAllCharts();
+  if (document.getElementById('cost_analysis_tree').options.length > 0) {
+    loadSingleTreeStats();
+  }
+});
+</script>
+{% endblock %}

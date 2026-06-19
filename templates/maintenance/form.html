@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}{% if record %}编辑养护记录{% else %}新增养护记录{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if record %}✏️ 编辑养护记录{% else %}➕ 新增养护记录{% endif %}</h1>
+  <a href="/maintenance" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not trees %}
+<div class="card" style="border-left: 4px solid var(--warning);">
+  <div class="card-body">
+    <p>⚠️ <strong>尚无漆树档案，请先<a href="/trees/new">创建漆树档案</a>。</strong></p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if record %}/maintenance/{{ record.id }}/edit{% else %}/maintenance/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>漆树 <span class="required">*</span></label>
+          <select name="tree_id" required id="tree_select">
+            {% set ns = namespace(selected=form_data.tree_id if form_data else (record.tree_id if record else '')) %}
+            <option value="">请选择漆树</option>
+            {% for t in trees %}
+            <option value="{{ t.id }}" data-tree="{{ t.id }}" {% if ns.selected|string == t.id|string %}selected{% endif %}>{{ t.tree_code }} - {{ t.location or '' }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>养护日期 <span class="required">*</span></label>
+          <input type="date" name="maintenance_date" required max="{{ today }}"
+            value="{{ form_data.maintenance_date if form_data else (record.maintenance_date.strftime('%Y-%m-%d') if record else today) }}">
+          {% if errors.maintenance_date %}
+          <span class="error-text">{{ errors.maintenance_date }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>项目类型 <span class="required">*</span></label>
+          <select name="project_type" required id="project_type_select">
+            {% set ns_pt = namespace(selected=form_data.project_type if form_data else (record.project_type if record else '')) %}
+            {% for pt in project_types %}
+            <option value="{{ pt }}" {% if ns_pt.selected == pt %}selected{% endif %}>{{ pt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>养护批次</label>
+          <input list="batch_suggestions" name="batch_no" id="batch_no_input" maxlength="50"
+            value="{{ form_data.batch_no if form_data else (record.batch_no if record else '') }}"
+            placeholder="如：2024-春季施肥-001（可从历史批次选择）">
+          <datalist id="batch_suggestions">
+            {% if batch_list %}
+            {% for b in batch_list %}
+            <option value="{{ b }}">
+            {% endfor %}
+            {% endif %}
+          </datalist>
+          <small style="color: var(--text-light);">建议格式：年份-季节-类型-编号（便于统计分析）</small>
+        </div>
+        <div class="form-group">
+          <label>关联割口</label>
+          <select name="incision_id" id="incision_select">
+            {% set ns2 = namespace(selected=form_data.incision_id if form_data else (record.incision_id if record else '')) %}
+            <option value="">无（整树养护）</option>
+            {% for inc in incisions %}
+            <option value="{{ inc.id }}" data-tree="{{ inc.tree_id }}" {% if ns2.selected|string == inc.id|string %}selected{% endif %}>
+              {{ inc.tree.tree_code }} - {{ inc.incision_code }} ({{ inc.method }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #eee;">
+
+      <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--accent-dark);">🧪 物料消耗</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>数量</label>
+          <input type="number" name="quantity" step="0.01" min="0"
+            value="{{ form_data.quantity if form_data else (record.quantity if record else 0) }}"
+            id="quantity_input" placeholder="输入数量">
+          {% if errors.quantity %}
+          <span class="error-text">{{ errors.quantity }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>单位</label>
+          <input type="text" name="unit" maxlength="20"
+            value="{{ form_data.unit if form_data else (record.unit if record else '') }}"
+            placeholder="如：kg、次、个" id="unit_input">
+        </div>
+        <div class="form-group">
+          <label>单价（元）</label>
+          <input type="number" name="unit_price" step="0.01" min="0"
+            value="{{ form_data.unit_price if form_data else (record.unit_price if record else 0) }}"
+            id="unit_price_input" placeholder="输入单价">
+          {% if errors.unit_price %}
+          <span class="error-text">{{ errors.unit_price }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>物料成本（元）</label>
+          <input type="text" id="material_cost_display" readonly
+            value="0"
+            style="background: #f9f9f9; font-weight: 600; color: #2980b9;">
+        </div>
+      </div>
+
+      <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #eee;">
+
+      <h3 style="font-size: 1rem; margin-bottom: 1rem; color: var(--accent-dark);">👷 人工投入</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>人工工时（小时）</label>
+          <input type="number" name="labor_hours" step="0.5" min="0"
+            value="{{ form_data.labor_hours if form_data else (record.labor_hours if record else 0) }}"
+            id="labor_hours_input" placeholder="输入工时">
+          {% if errors.labor_hours %}
+          <span class="error-text">{{ errors.labor_hours }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>人工费率（元/小时）</label>
+          <input type="number" name="labor_cost_rate" step="0.01" min="0"
+            value="{{ form_data.labor_cost_rate if form_data else (record.labor_cost_rate if record else 0) }}"
+            id="labor_rate_input" placeholder="如：50元/小时">
+          {% if errors.labor_cost_rate %}
+          <span class="error-text">{{ errors.labor_cost_rate }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>人工成本（元）</label>
+          <input type="text" id="labor_cost_display" readonly
+            value="0"
+            style="background: #f9f9f9; font-weight: 600; color: #c0392b;">
+          <input type="hidden" name="labor_cost" id="labor_cost_hidden" value="0">
+        </div>
+        <div class="form-group">
+          <label>负责人</label>
+          <input type="text" name="person_in_charge" maxlength="50"
+            value="{{ form_data.person_in_charge if form_data else (record.person_in_charge if record else '') }}"
+            placeholder="负责人姓名">
+        </div>
+      </div>
+
+      <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #eee;">
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label style="font-size: 1.1rem; color: var(--accent-dark);">💰 总成本合计（元）</label>
+          <input type="text" id="total_cost_display" readonly
+            value="0"
+            style="background: #fff8e1; font-weight: 700; color: #8b4513; font-size: 1.25rem; padding: 0.75rem;">
+          <input type="hidden" name="total_cost" id="total_cost_hidden" value="0">
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500" rows="3"
+            placeholder="养护详情备注...">{{ form_data.remarks if form_data else (record.remarks if record else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/maintenance" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var treeSelect = document.getElementById('tree_select');
+  var incisionSelect = document.getElementById('incision_select');
+  var quantityInput = document.getElementById('quantity_input');
+  var unitPriceInput = document.getElementById('unit_price_input');
+  var laborHoursInput = document.getElementById('labor_hours_input');
+  var laborRateInput = document.getElementById('labor_rate_input');
+  var materialCostDisplay = document.getElementById('material_cost_display');
+  var laborCostDisplay = document.getElementById('labor_cost_display');
+  var laborCostHidden = document.getElementById('labor_cost_hidden');
+  var totalCostDisplay = document.getElementById('total_cost_display');
+  var totalCostHidden = document.getElementById('total_cost_hidden');
+  var projectTypeSelect = document.getElementById('project_type_select');
+  var unitInput = document.getElementById('unit_input');
+  var batchNoInput = document.getElementById('batch_no_input');
+
+  function filterIncisions() {
+    var treeId = treeSelect.value;
+    var options = incisionSelect.querySelectorAll('option');
+    options.forEach(function(opt) {
+      if (opt.value === '' || opt.dataset.tree === treeId) {
+        opt.style.display = '';
+      } else {
+        opt.style.display = 'none';
+        if (opt.selected) opt.selected = false;
+      }
+    });
+  }
+
+  function calcMaterialCost() {
+    var q = parseFloat(quantityInput.value) || 0;
+    var p = parseFloat(unitPriceInput.value) || 0;
+    var matCost = (q * p).toFixed(2);
+    materialCostDisplay.value = matCost;
+    calcTotal();
+  }
+
+  function calcLaborCost() {
+    var h = parseFloat(laborHoursInput.value) || 0;
+    var r = parseFloat(laborRateInput.value) || 0;
+    var labCost = (h * r).toFixed(2);
+    laborCostDisplay.value = labCost;
+    laborCostHidden.value = labCost;
+    calcTotal();
+  }
+
+  function calcTotal() {
+    var mat = parseFloat(materialCostDisplay.value) || 0;
+    var lab = parseFloat(laborCostDisplay.value) || 0;
+    var total = (mat + lab).toFixed(2);
+    totalCostDisplay.value = total;
+    totalCostHidden.value = total;
+  }
+
+  var unitMap = {
+    '施肥': 'kg',
+    '病虫处理': '次',
+    '树皮养护': '次',
+    '工具消耗': '个',
+    '人工工时': '工时'
+  };
+
+  function autoFillUnit() {
+    var pt = projectTypeSelect.value;
+    if (unitMap[pt] && !unitInput.value) {
+      unitInput.value = unitMap[pt];
+    }
+  }
+
+  function autoSuggestBatch() {
+    var pt = projectTypeSelect.value;
+    var dateInput = document.querySelector('input[name="maintenance_date"]');
+    if (!batchNoInput.value && dateInput.value) {
+      var d = dateInput.value.split('-');
+      var season = '';
+      var m = parseInt(d[1]);
+      if (m >= 3 && m <= 5) season = '春季';
+      else if (m >= 6 && m <= 8) season = '夏季';
+      else if (m >= 9 && m <= 11) season = '秋季';
+      else season = '冬季';
+      var typeMap = {
+        '施肥': '施肥',
+        '病虫处理': '病虫',
+        '树皮养护': '养护',
+        '工具消耗': '工具',
+        '人工工时': '人工'
+      };
+      batchNoInput.placeholder = d[0] + '-' + season + (typeMap[pt] || '养护') + '-XXX';
+    }
+  }
+
+  treeSelect.addEventListener('change', filterIncisions);
+  quantityInput.addEventListener('input', calcMaterialCost);
+  unitPriceInput.addEventListener('input', calcMaterialCost);
+  laborHoursInput.addEventListener('input', calcLaborCost);
+  laborRateInput.addEventListener('input', calcLaborCost);
+  projectTypeSelect.addEventListener('change', autoFillUnit);
+  projectTypeSelect.addEventListener('change', autoSuggestBatch);
+
+  filterIncisions();
+  calcMaterialCost();
+  calcLaborCost();
+});
+</script>
+
+{% endblock %}
