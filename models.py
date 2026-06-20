@@ -136,3 +136,89 @@ class MaintenanceRecord(Base):
 
     tree = relationship("LacquerTree")
     incision = relationship("Incision")
+
+
+class MaintenanceEvaluation(Base):
+    __tablename__ = "maintenance_evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tree_id = Column(Integer, ForeignKey("lacquer_trees.id"), nullable=False)
+    incision_id = Column(Integer, ForeignKey("incisions.id"))
+    season = Column(String(20), nullable=False)
+    year = Column(Integer, nullable=False)
+    batch_no = Column(String(50))
+    maintenance_type = Column(String(50))
+    
+    total_maintenance_cost = Column(Float, default=0.0)
+    total_labor_hours = Column(Float, default=0.0)
+    total_yield = Column(Float, default=0.0)
+    harvest_count = Column(Integer, default=0)
+    abnormal_count = Column(Integer, default=0)
+    total_observations = Column(Integer, default=0)
+    abnormal_rate = Column(Float, default=0.0)
+    
+    avg_recovery_quality = Column(Float, default=0.0)
+    unit_output_cost = Column(Float, default=0.0)
+    input_output_ratio = Column(Float, default=0.0)
+    
+    yield_score = Column(Float, default=0.0)
+    cost_score = Column(Float, default=0.0)
+    quality_score = Column(Float, default=0.0)
+    abnormal_score = Column(Float, default=0.0)
+    overall_score = Column(Float, default=0.0)
+    efficiency_level = Column(String(20), default="中等")
+    
+    is_inefficient = Column(Boolean, default=False)
+    inefficient_reason = Column(Text)
+    suggestions = Column(Text)
+    
+    evaluated_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    tree = relationship("LacquerTree")
+    incision = relationship("Incision")
+
+
+class SeasonalRecommendation(Base):
+    __tablename__ = "seasonal_recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    season = Column(String(20), nullable=False)
+    year = Column(Integer, nullable=False)
+    
+    fertilization_suggestion = Column(Text)
+    pest_control_suggestion = Column(Text)
+    bark_care_suggestion = Column(Text)
+    labor_arrangement_suggestion = Column(Text)
+    
+    overall_strategy = Column(Text)
+    key_points = Column(Text)
+    
+    expected_effect = Column(Text)
+    estimated_cost = Column(Float, default=0.0)
+    estimated_labor = Column(Float, default=0.0)
+    
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class SeasonalComparison(Base):
+    __tablename__ = "seasonal_comparisons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    year = Column(Integer, nullable=False)
+    season = Column(String(20), nullable=False)
+    
+    total_maintenance_cost = Column(Float, default=0.0)
+    total_labor_hours = Column(Float, default=0.0)
+    total_yield = Column(Float, default=0.0)
+    avg_unit_cost = Column(Float, default=0.0)
+    avg_abnormal_rate = Column(Float, default=0.0)
+    avg_overall_score = Column(Float, default=0.0)
+    tree_count = Column(Integer, default=0)
+    incision_count = Column(Integer, default=0)
+    
+    cost_by_type = Column(Text)
+    labor_by_type = Column(Text)
+    
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())

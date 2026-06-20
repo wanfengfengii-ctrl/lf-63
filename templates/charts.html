@@ -222,6 +222,211 @@
   </div>
 </div>
 
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>{{ season_emoji }} 养护效果综合评分</h3>
+      <div class="btn-group">
+        <button class="btn btn-primary btn-sm" onclick="loadEvaluationScores()">🔄 刷新评分</button>
+        <button class="btn btn-secondary btn-sm" onclick="recalculateEvaluation()">⚙️ 重新计算</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="evaluation_score_summary" style="margin-bottom: 1.5rem;">
+        {% if evaluation_scores %}
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+          {% for season, data in evaluation_scores.items() %}
+          <div style="background: var(--bg); padding: 1rem; border-radius: 8px; border-left: 4px solid 
+            {% if data.avg_overall_score >= 80 %}#27ae60
+            {% elif data.avg_overall_score >= 60 %}#f39c12
+            {% else %}#e74c3c{% endif %};">
+            <div style="font-weight: 600; color: var(--primary); margin-bottom: 0.5rem;">{{ season }}</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--text);">
+              {{ data.avg_overall_score }}<small style="font-size: 0.8rem;">分</small>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-light); margin-top: 0.3rem;">
+              产量: {{ data.avg_yield_score }}分 · 成本: {{ data.avg_cost_score }}分<br>
+              质量: {{ data.avg_quality_score }}分 · 异常: {{ data.avg_abnormal_score }}分
+            </div>
+            <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-light);">
+              投入: {{ data.total_cost }}元 · 产出: {{ data.total_yield }}kg · 单位成本: {{ data.avg_unit_cost }}元/kg
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="icon">📊</div>
+          <div>暂无养护效果评分数据</div>
+          <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先添加养护记录和采收记录</div>
+        </div>
+        {% endif %}
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节综合评分对比</h4>
+          <div id="season_score_radar_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节分项评分对比</h4>
+          <div id="season_score_bar_chart" style="height: 350px;"></div>
+        </div>
+      </div>
+      
+      <div id="evaluation_detail_table_container" style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">养护评估明细表</h4>
+        <div id="evaluation_detail_table" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>📊 季节对比分析</h3>
+      <button class="btn btn-primary btn-sm" onclick="loadSeasonalComparisonCharts()">🔄 加载对比图表</button>
+    </div>
+    <div class="card-body">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节养护投入成本对比（元）</h4>
+          <div id="season_cost_comparison_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节产漆量对比（kg）</h4>
+          <div id="season_yield_comparison_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节单位出漆成本对比（元/kg）</h4>
+          <div id="season_unit_cost_chart" style="height: 350px;"></div>
+        </div>
+        <div>
+          <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">各季节异常率对比（%）</h4>
+          <div id="season_abnormal_chart" style="height: 350px;"></div>
+        </div>
+      </div>
+      
+      <div id="season_comparison_table_container" style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">季节对比明细表</h4>
+        <div id="season_comparison_table" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="card">
+    <div class="card-header">
+      <h3>💡 季节性养护策略推荐</h3>
+      <button class="btn btn-primary btn-sm" onclick="loadSeasonalRecommendation()">🔄 刷新推荐</button>
+    </div>
+    <div class="card-body">
+      <div id="seasonal_recommendation_container">
+        {% if seasonal_suggestions and seasonal_suggestions.current.recommendation %}
+        {% set rec = seasonal_suggestions.current.recommendation %}
+        <div style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+          <div style="font-size: 1.2rem; font-weight: 700; color: var(--primary); margin-bottom: 0.5rem;">
+            {{ season_emoji }} {{ current_season }}养护策略（{{ seasonal_suggestions.current.year }}年）
+          </div>
+          <div style="font-size: 1rem; line-height: 1.6; color: var(--text);">
+            {{ rec.overall_strategy }}
+          </div>
+          <div style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-light);">
+            <strong>关键要点：</strong>{{ rec.key_points }}
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--success);">
+            <strong>预期效果：</strong>{{ rec.expected_effect }}
+          </div>
+          <div style="margin-top: 1rem; display: flex; gap: 1rem; font-size: 0.85rem;">
+            <span class="badge badge-info">预计投入: {{ rec.estimated_cost }}元</span>
+            <span class="badge badge-info">预计工时: {{ rec.estimated_labor }}小时</span>
+          </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+          <div style="background: #fff; padding: 1rem; border-radius: 8px; border-top: 4px solid #27ae60;">
+            <div style="font-weight: 600; color: #27ae60; margin-bottom: 0.5rem;">🌱 施肥建议</div>
+            <div style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">
+              {% for s in rec.fertilization_suggestion.split('；') %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div style="background: #fff; padding: 1rem; border-radius: 8px; border-top: 4px solid #e74c3c;">
+            <div style="font-weight: 600; color: #e74c3c; margin-bottom: 0.5rem;">🐛 病虫处理</div>
+            <div style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">
+              {% for s in rec.pest_control_suggestion.split('；') %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div style="background: #fff; padding: 1rem; border-radius: 8px; border-top: 4px solid #8b4513;">
+            <div style="font-weight: 600; color: #8b4513; margin-bottom: 0.5rem;">🪵 树皮养护</div>
+            <div style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">
+              {% for s in rec.bark_care_suggestion.split('；') %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div style="background: #fff; padding: 1rem; border-radius: 8px; border-top: 4px solid #2980b9;">
+            <div style="font-weight: 600; color: #2980b9; margin-bottom: 0.5rem;">👷 人工安排</div>
+            <div style="font-size: 0.85rem; color: var(--text-light); line-height: 1.6;">
+              {% for s in rec.labor_arrangement_suggestion.split('；') %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="icon">💡</div>
+          <div>正在生成季节性养护策略...</div>
+          <div style="margin-top: 0.5rem; font-size: 0.85rem;">请确保有足够的历史养护数据</div>
+        </div>
+        {% endif %}
+      </div>
+      
+      {% if seasonal_suggestions and seasonal_suggestions.next.recommendation %}
+      {% set next_rec = seasonal_suggestions.next.recommendation %}
+      <div style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border);">
+        <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary); margin-bottom: 1rem;">
+          🔮 下一季节（{{ seasonal_suggestions.next.season }}）策略预览
+        </div>
+        <div style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); padding: 1.5rem; border-radius: 8px;">
+          <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">
+            {{ next_rec.overall_strategy }}
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1rem;">
+            <div style="font-size: 0.85rem;">
+              <strong style="color: #27ae60;">🌱 施肥：</strong>
+              <span style="color: var(--text-light);">{{ next_rec.fertilization_suggestion.split('；')[0] }}</span>
+            </div>
+            <div style="font-size: 0.85rem;">
+              <strong style="color: #e74c3c;">🐛 病虫：</strong>
+              <span style="color: var(--text-light);">{{ next_rec.pest_control_suggestion.split('；')[0] }}</span>
+            </div>
+            <div style="font-size: 0.85rem;">
+              <strong style="color: #8b4513;">🪵 树皮：</strong>
+              <span style="color: var(--text-light);">{{ next_rec.bark_care_suggestion.split('；')[0] }}</span>
+            </div>
+            <div style="font-size: 0.85rem;">
+              <strong style="color: #2980b9;">👷 人工：</strong>
+              <span style="color: var(--text-light);">{{ next_rec.labor_arrangement_suggestion.split('；')[0] }}</span>
+            </div>
+          </div>
+          <div style="margin-top: 1rem; font-size: 0.85rem;">
+            <span class="badge badge-info">预计投入: {{ next_rec.estimated_cost }}元</span>
+            <span class="badge badge-info" style="margin-left: 0.5rem;">预计工时: {{ next_rec.estimated_labor }}小时</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 {% block scripts %}
 <script>
@@ -509,7 +714,300 @@ document.addEventListener('DOMContentLoaded', function() {
   loadMaintenanceTypeCharts();
   loadMethodImpactCharts();
   loadMonthlyTrendCharts();
+  loadEvaluationScores();
+  loadSeasonalComparisonCharts();
+  loadSeasonalRecommendation();
 });
+
+function loadEvaluationScores() {
+  ['season_score_radar_chart', 'season_score_bar_chart'].forEach(function(id) {
+    document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  });
+  document.getElementById('evaluation_detail_table').innerHTML = '';
+
+  fetch('/api/maintenance-evaluation-detail')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.evaluations.length === 0) {
+        ['season_score_radar_chart', 'season_score_bar_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无养护评估数据</div></div>';
+        });
+        return;
+      }
+
+      var seasonGroups = {};
+      data.evaluations.forEach(function(e) {
+        var key = e.year + '年' + e.season;
+        if (!seasonGroups[key]) {
+          seasonGroups[key] = {
+            yield_scores: [], cost_scores: [], quality_scores: [], abnormal_scores: [], overall_scores: []
+          };
+        }
+        seasonGroups[key].yield_scores.push(e.yield_score);
+        seasonGroups[key].cost_scores.push(e.cost_score);
+        seasonGroups[key].quality_scores.push(e.quality_score);
+        seasonGroups[key].abnormal_scores.push(e.abnormal_score);
+        seasonGroups[key].overall_scores.push(e.overall_score);
+      });
+
+      var seasons = Object.keys(seasonGroups).sort();
+      var radarTraces = [];
+      var scoreCategories = ['产量评分', '成本评分', '质量评分', '异常评分'];
+      
+      seasons.forEach(function(season, idx) {
+        var scores = seasonGroups[season];
+        var avgScores = [
+          scores.yield_scores.reduce(function(a, b) { return a + b; }, 0) / scores.yield_scores.length,
+          scores.cost_scores.reduce(function(a, b) { return a + b; }, 0) / scores.cost_scores.length,
+          scores.quality_scores.reduce(function(a, b) { return a + b; }, 0) / scores.quality_scores.length,
+          scores.abnormal_scores.reduce(function(a, b) { return a + b; }, 0) / scores.abnormal_scores.length
+        ];
+        radarTraces.push({
+          type: 'scatterpolar',
+          r: avgScores,
+          theta: scoreCategories,
+          name: season,
+          fill: 'toself',
+          line: { color: chartColors[idx % chartColors.length] },
+          marker: { color: chartColors[idx % chartColors.length] }
+        });
+      });
+
+      var radarLayout = {
+        polar: {
+          radialaxis: { visible: true, range: [0, 25] }
+        },
+        legend: { orientation: 'h', y: -0.1 },
+        margin: { l: 30, r: 30, t: 20, b: 30 }
+      };
+      Plotly.newPlot('season_score_radar_chart', radarTraces, radarLayout, { responsive: true, displayModeBar: false });
+
+      var yieldTrace = {
+        x: seasons, y: seasons.map(function(s) {
+          var scores = seasonGroups[s];
+          return Math.round(scores.yield_scores.reduce(function(a, b) { return a + b; }, 0) / scores.yield_scores.length * 100) / 100;
+        }), name: '产量评分', type: 'bar', marker: { color: '#27ae60' }
+      };
+      var costTrace = {
+        x: seasons, y: seasons.map(function(s) {
+          var scores = seasonGroups[s];
+          return Math.round(scores.cost_scores.reduce(function(a, b) { return a + b; }, 0) / scores.cost_scores.length * 100) / 100;
+        }), name: '成本评分', type: 'bar', marker: { color: '#e67e22' }
+      };
+      var qualityTrace = {
+        x: seasons, y: seasons.map(function(s) {
+          var scores = seasonGroups[s];
+          return Math.round(scores.quality_scores.reduce(function(a, b) { return a + b; }, 0) / scores.quality_scores.length * 100) / 100;
+        }), name: '质量评分', type: 'bar', marker: { color: '#8b4513' }
+      };
+      var abnormalTrace = {
+        x: seasons, y: seasons.map(function(s) {
+          var scores = seasonGroups[s];
+          return Math.round(scores.abnormal_scores.reduce(function(a, b) { return a + b; }, 0) / scores.abnormal_scores.length * 100) / 100;
+        }), name: '异常评分', type: 'bar', marker: { color: '#e74c3c' }
+      };
+
+      Plotly.newPlot('season_score_bar_chart', [yieldTrace, costTrace, qualityTrace, abnormalTrace], {
+        barmode: 'group',
+        yaxis: { title: '评分（满分25）', range: [0, 28] },
+        legend: { orientation: 'h', y: -0.2 },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var tableHtml = '<table><thead><tr><th>漆树</th><th>割口</th><th>年份</th><th>季节</th><th>养护类型</th><th>养护成本</th><th>人工工时</th><th>产量</th><th>单位成本</th><th>综合评分</th><th>效率等级</th></tr></thead><tbody>';
+      data.evaluations.slice(0, 20).forEach(function(d) {
+        var scoreClass = d.overall_score >= 80 ? 'background: #d4edda;' : d.overall_score >= 60 ? 'background: #fff3cd;' : 'background: #f8d7da;';
+        tableHtml += '<tr style="' + scoreClass + '">';
+        tableHtml += '<td>' + d.tree_code + '</td>';
+        tableHtml += '<td>' + d.incision_code + '</td>';
+        tableHtml += '<td>' + d.year + '</td>';
+        tableHtml += '<td>' + d.season + '</td>';
+        tableHtml += '<td>' + (d.maintenance_type || '-') + '</td>';
+        tableHtml += '<td>' + d.total_maintenance_cost + '元</td>';
+        tableHtml += '<td>' + d.total_labor_hours + 'h</td>';
+        tableHtml += '<td>' + d.total_yield + 'kg</td>';
+        tableHtml += '<td>' + (d.unit_output_cost ? d.unit_output_cost + '元/kg' : '-') + '</td>';
+        tableHtml += '<td><strong>' + d.overall_score + '</strong></td>';
+        tableHtml += '<td>';
+        if (d.efficiency_level === '优秀') {
+          tableHtml += '<span class="badge badge-success">' + d.efficiency_level + '</span>';
+        } else if (d.efficiency_level === '良好') {
+          tableHtml += '<span class="badge badge-info">' + d.efficiency_level + '</span>';
+        } else if (d.efficiency_level === '中等') {
+          tableHtml += '<span class="badge badge-warning">' + d.efficiency_level + '</span>';
+        } else {
+          tableHtml += '<span class="badge badge-danger">' + d.efficiency_level + '</span>';
+        }
+        tableHtml += '</td></tr>';
+      });
+      tableHtml += '</tbody></table>';
+      document.getElementById('evaluation_detail_table').innerHTML = tableHtml;
+    })
+    .catch(function() {
+      ['season_score_radar_chart', 'season_score_bar_chart'].forEach(function(id) {
+        document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>数据加载失败，请稍后重试</div></div>';
+      });
+    });
+}
+
+function loadSeasonalComparisonCharts() {
+  ['season_cost_comparison_chart', 'season_yield_comparison_chart', 'season_unit_cost_chart', 'season_abnormal_chart'].forEach(function(id) {
+    document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>正在加载数据...</div></div>';
+  });
+  document.getElementById('season_comparison_table').innerHTML = '';
+
+  fetch('/api/seasonal-comparison')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.seasons.length === 0) {
+        ['season_cost_comparison_chart', 'season_yield_comparison_chart', 'season_unit_cost_chart', 'season_abnormal_chart'].forEach(function(id) {
+          document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无季节对比数据</div></div>';
+        });
+        return;
+      }
+
+      var costTrace = {
+        x: data.seasons, y: data.total_costs, type: 'bar',
+        marker: { color: '#e67e22' },
+        text: data.total_costs.map(function(v) { return v + '元'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('season_cost_comparison_chart', [costTrace], {
+        yaxis: { title: '养护成本（元）' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var yieldTrace = {
+        x: data.seasons, y: data.total_yields, type: 'bar',
+        marker: { color: '#27ae60' },
+        text: data.total_yields.map(function(v) { return v + 'kg'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('season_yield_comparison_chart', [yieldTrace], {
+        yaxis: { title: '产漆量（kg）' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var unitCostTrace = {
+        x: data.seasons, y: data.avg_unit_costs, type: 'bar',
+        marker: {
+          color: data.avg_unit_costs.map(function(v) {
+            return v > 500 ? '#e74c3c' : v > 200 ? '#f39c12' : '#27ae60';
+          })
+        },
+        text: data.avg_unit_costs.map(function(v) { return v + '元/kg'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('season_unit_cost_chart', [unitCostTrace], {
+        yaxis: { title: '单位出漆成本（元/kg）' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 },
+        shapes: [{
+          type: 'line', x0: -0.5, x1: data.seasons.length - 0.5,
+          y0: 500, y1: 500,
+          line: { color: 'red', width: 2, dash: 'dash' }
+        }]
+      }, { responsive: true, displayModeBar: false });
+
+      var abnormalTrace = {
+        x: data.seasons, y: data.avg_abnormal_rates, type: 'bar',
+        marker: {
+          color: data.avg_abnormal_rates.map(function(v) {
+            return v > 20 ? '#e74c3c' : v > 10 ? '#f39c12' : '#27ae60';
+          })
+        },
+        text: data.avg_abnormal_rates.map(function(v) { return v + '%'; }),
+        textposition: 'outside'
+      };
+      Plotly.newPlot('season_abnormal_chart', [abnormalTrace], {
+        yaxis: { title: '异常率（%）' },
+        margin: { l: 60, r: 20, t: 20, b: 60 },
+        xaxis: { tickangle: -20 }
+      }, { responsive: true, displayModeBar: false });
+
+      var tableHtml = '<table><thead><tr><th>年份</th><th>季节</th><th>漆树数</th><th>割口数</th><th>养护成本</th><th>人工工时</th><th>产量</th><th>单位成本</th><th>异常率</th><th>综合评分</th></tr></thead><tbody>';
+      data.details.slice().reverse().forEach(function(d) {
+        tableHtml += '<tr>';
+        tableHtml += '<td>' + d.year + '</td>';
+        tableHtml += '<td>' + d.season + '</td>';
+        tableHtml += '<td>' + d.tree_count + '</td>';
+        tableHtml += '<td>' + d.incision_count + '</td>';
+        tableHtml += '<td><strong>' + d.total_maintenance_cost + '元</strong></td>';
+        tableHtml += '<td>' + d.total_labor_hours + 'h</td>';
+        tableHtml += '<td>' + d.total_yield + 'kg</td>';
+        tableHtml += '<td>';
+        if (d.avg_unit_cost > 500) {
+          tableHtml += '<span class="badge badge-danger">' + d.avg_unit_cost + '元/kg</span>';
+        } else if (d.avg_unit_cost > 200) {
+          tableHtml += '<span class="badge badge-warning">' + d.avg_unit_cost + '元/kg</span>';
+        } else {
+          tableHtml += '<span class="badge badge-success">' + d.avg_unit_cost + '元/kg</span>';
+        }
+        tableHtml += '</td>';
+        tableHtml += '<td>';
+        if (d.avg_abnormal_rate > 20) {
+          tableHtml += '<span class="badge badge-danger">' + d.avg_abnormal_rate + '%</span>';
+        } else if (d.avg_abnormal_rate > 10) {
+          tableHtml += '<span class="badge badge-warning">' + d.avg_abnormal_rate + '%</span>';
+        } else {
+          tableHtml += '<span class="badge badge-success">' + d.avg_abnormal_rate + '%</span>';
+        }
+        tableHtml += '</td>';
+        tableHtml += '<td><strong>' + d.avg_overall_score + '</strong></td>';
+        tableHtml += '</tr>';
+      });
+      tableHtml += '</tbody></table>';
+      document.getElementById('season_comparison_table').innerHTML = tableHtml;
+    })
+    .catch(function() {
+      ['season_cost_comparison_chart', 'season_yield_comparison_chart', 'season_unit_cost_chart', 'season_abnormal_chart'].forEach(function(id) {
+        document.getElementById(id).innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><div>数据加载失败，请稍后重试</div></div>';
+      });
+    });
+}
+
+function loadSeasonalRecommendation() {
+  fetch('/api/seasonal-recommendation')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+    })
+    .catch(function() {
+    });
+}
+
+function recalculateEvaluation() {
+  if (!confirm('确定要重新计算所有养护评估和推荐策略吗？这可能需要几秒钟时间。')) {
+    return;
+  }
+  
+  var btn = event.target;
+  var originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ 计算中...';
+  btn.disabled = true;
+
+  fetch('/api/recalculate-evaluation', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status === 'success') {
+        alert('✅ ' + data.message);
+        loadEvaluationScores();
+        loadSeasonalComparisonCharts();
+        location.reload();
+      } else {
+        alert('❌ 计算失败: ' + data.message);
+      }
+    })
+    .catch(function() {
+      alert('❌ 计算失败，请稍后重试');
+    })
+    .finally(function() {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    });
+}
 
 function loadMaintenanceYieldCharts() {
   ['cost_yield_bar_chart', 'cost_abnormal_chart'].forEach(function(id) {

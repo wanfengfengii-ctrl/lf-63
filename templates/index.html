@@ -238,4 +238,145 @@
   </div>
 </div>
 
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+  <div class="card">
+    <div class="card-header">
+      <span>{{ season_emoji }} {{ current_season }}养护建议</span>
+      <a href="/charts" class="btn btn-primary btn-sm">查看完整策略</a>
+    </div>
+    <div class="card-body">
+      {% if seasonal_suggestions and seasonal_suggestions.current.recommendation %}
+        {% set rec = seasonal_suggestions.current.recommendation %}
+        <div style="margin-bottom: 1rem;">
+          <div style="font-weight: 600; color: var(--primary); margin-bottom: 0.5rem;">🎯 总体策略</div>
+          <div style="color: var(--text-light); font-size: 0.9rem; line-height: 1.6;">{{ rec.overall_strategy }}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div>
+            <div style="font-weight: 600; color: #27ae60; margin-bottom: 0.3rem; font-size: 0.85rem;">🌱 施肥建议</div>
+            <div style="font-size: 0.8rem; color: var(--text-light); line-height: 1.5;">
+              {% for s in rec.fertilization_suggestion.split('；')[:2] %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <div style="font-weight: 600; color: #e74c3c; margin-bottom: 0.3rem; font-size: 0.85rem;">🐛 病虫处理</div>
+            <div style="font-size: 0.8rem; color: var(--text-light); line-height: 1.5;">
+              {% for s in rec.pest_control_suggestion.split('；')[:2] %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <div style="font-weight: 600; color: #8b4513; margin-bottom: 0.3rem; font-size: 0.85rem;">🪵 树皮养护</div>
+            <div style="font-size: 0.8rem; color: var(--text-light); line-height: 1.5;">
+              {% for s in rec.bark_care_suggestion.split('；')[:2] %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <div style="font-weight: 600; color: #2980b9; margin-bottom: 0.3rem; font-size: 0.85rem;">👷 人工安排</div>
+            <div style="font-size: 0.8rem; color: var(--text-light); line-height: 1.5;">
+              {% for s in rec.labor_arrangement_suggestion.split('；')[:2] %}
+                • {{ s }}<br>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+          <div style="font-size: 0.85rem; color: var(--text-light);">
+            <span style="font-weight: 600;">📋 关键要点：</span>{{ rec.key_points }}
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--success);">
+            <span style="font-weight: 600;">🎯 预期效果：</span>{{ rec.expected_effect.split('；')[0] }}
+          </div>
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <div class="icon">{{ season_emoji }}</div>
+          <div>正在生成{{ current_season }}养护策略...</div>
+          <div style="margin-top: 0.5rem; font-size: 0.85rem;">请确保有足够的历史养护数据</div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span>⚠️ 低效养护预警</span>
+      <a href="/maintenance" class="btn btn-danger btn-sm">查看养护记录</a>
+    </div>
+    <div class="card-body">
+      {% if inefficient_warnings %}
+      <ul class="reminder-list">
+        {% for w in inefficient_warnings %}
+        <li class="reminder-item" style="border-left: 3px solid #c0392b;">
+          <div class="reminder-info">
+            <span class="reminder-tree">
+              {% if w.type == 'tree' %}🌳 {{ w.tree_code }}{% else %}✂️ {{ w.tree_code }} · {{ w.incision_code }}{% endif %}
+            </span>
+            <span class="reminder-sub">综合评分: <strong>{{ w.overall_score }}分</strong> · {{ w.efficiency_level }}</span>
+            {% if w.inefficient_reason %}
+            <span class="reminder-sub" style="color: #c0392b;">{{ w.inefficient_reason }}</span>
+            {% endif %}
+            {% if w.suggestions %}
+            <span class="reminder-sub" style="color: #27ae60;">💡 {{ w.suggestions }}</span>
+            {% endif %}
+          </div>
+          <span class="badge badge-danger">{{ w.efficiency_level }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <div>暂无低效养护预警</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">所有养护措施效率正常</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if seasonal_suggestions and seasonal_suggestions.next.recommendation %}
+{% set next_rec = seasonal_suggestions.next.recommendation %}
+<div class="card" style="margin-top: 1.5rem; background: linear-gradient(135deg, #f8f9fa, #e9ecef);">
+  <div class="card-header" style="background: transparent; border-bottom: 1px solid var(--border);">
+    <span>🔮 下一季节（{{ seasonal_suggestions.next.season }}）养护策略预览</span>
+    <span class="badge badge-info">预计投入: {{ next_rec.estimated_cost }}元 / {{ next_rec.estimated_labor }}小时</span>
+  </div>
+  <div class="card-body">
+    <div style="font-weight: 600; color: var(--primary); margin-bottom: 0.5rem;">{{ next_rec.overall_strategy }}</div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: 1rem;">
+      <div style="background: #fff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #27ae60;">
+        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem;">🌱 施肥重点</div>
+        <div style="font-size: 0.75rem; color: var(--text-light); line-height: 1.4;">
+          {{ next_rec.fertilization_suggestion.split('；')[0] }}
+        </div>
+      </div>
+      <div style="background: #fff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #e74c3c;">
+        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem;">🐛 病虫防治</div>
+        <div style="font-size: 0.75rem; color: var(--text-light); line-height: 1.4;">
+          {{ next_rec.pest_control_suggestion.split('；')[0] }}
+        </div>
+      </div>
+      <div style="background: #fff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #8b4513;">
+        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem;">🪵 树皮养护</div>
+        <div style="font-size: 0.75rem; color: var(--text-light); line-height: 1.4;">
+          {{ next_rec.bark_care_suggestion.split('；')[0] }}
+        </div>
+      </div>
+      <div style="background: #fff; padding: 0.75rem; border-radius: 8px; border-left: 3px solid #2980b9;">
+        <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem;">👷 人工安排</div>
+        <div style="font-size: 0.75rem; color: var(--text-light); line-height: 1.4;">
+          {{ next_rec.labor_arrangement_suggestion.split('；')[0] }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

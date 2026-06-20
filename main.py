@@ -203,6 +203,793 @@ def get_cost_warnings(db: Session) -> dict:
 
 def recalculate_all_reminders(db: Session):
     update_harvest_plan_status(db)
+    recalculate_maintenance_evaluation(db)
+    generate_seasonal_recommendations(db)
+    recalculate_seasonal_comparisons(db)
+
+
+def get_season(dt: date) -> str:
+    month = dt.month
+    if month in [3, 4, 5]:
+        return "春季"
+    elif month in [6, 7, 8]:
+        return "夏季"
+    elif month in [9, 10, 11]:
+        return "秋季"
+    else:
+        return "冬季"
+
+
+def get_next_season(current_season: str) -> str:
+    seasons = ["春季", "夏季", "秋季", "冬季"]
+    idx = seasons.index(current_season)
+    return seasons[(idx + 1) % 4]
+
+
+def get_season_date_range(year: int, season: str) -> tuple:
+    if season == "春季":
+        return (date(year, 3, 1), date(year, 5, 31))
+    elif season == "夏季":
+        return (date(year, 6, 1), date(year, 8, 31))
+    elif season == "秋季":
+        return (date(year, 9, 1), date(year, 11, 30))
+    else:
+        return (date(year, 12, 1), date(year, 2, 28 if year % 4 != 0 else 29))
+
+
+def calculate_quality_score(condition: str) -> float:
+    quality_map = {"优秀": 5.0, "良好": 4.0, "一般": 3.0, "较差": 2.0, "异常": 1.0}
+    return quality_map.get(condition, 0.0)
+
+
+def evaluate_maintenance_for_tree_incision(
+    db: Session,
+    tree_id: int,
+    incision_id: Optional[int],
+    year: int,
+    season: str,
+    batch_no: Optional[str] = None
+) -> Optional[models.MaintenanceEvaluation]:
+    start_date, end_date = get_season_date_range(year, season)
+    
+    maintenance_query = db.query(models.MaintenanceRecord).filter(
+        models.MaintenanceRecord.tree_id == tree_id,
+        models.MaintenanceRecord.maintenance_date >= start_date,
+        models.MaintenanceRecord.maintenance_date <= end_date
+    )
+    
+    if incision_id:
+        maintenance_query = maintenance_query.filter(models.MaintenanceRecord.incision_id == incision_id)
+    else:
+        maintenance_query = maintenance_query.filter(models.MaintenanceRecord.incision_id == None)
+    
+    if batch_no:
+        maintenance_query = maintenance_query.filter(models.MaintenanceRecord.batch_no == batch_no)
+    
+    maintenance_records = maintenance_query.all()
+    
+    total_cost = sum(r.total_cost for r in maintenance_records)
+    total_labor = sum(r.labor_hours for r in maintenance_records)
+    maintenance_types = list(set(r.project_type for r in maintenance_records)) if maintenance_records else []
+    
+    harvest_query = db.query(models.HarvestBatch).filter(
+        models.HarvestBatch.harvest_date >= start_date,
+        models.HarvestBatch.harvest_date <= end_date
+    )
+    
+    if incision_id:
+        harvest_query = harvest_query.filter(models.HarvestBatch.incision_id == incision_id)
+    else:
+        tree_incisions = db.query(models.Incision).filter(
+            models.Incision.tree_id == tree_id
+        ).all()
+        incision_ids = [inc.id for inc in tree_incisions]
+        harvest_query = harvest_query.filter(models.HarvestBatch.incision_id.in_(incision_ids))
+    
+    harvests = harvest_query.all()
+    total_yield = sum(h.yield_amount for h in harvests)
+    harvest_count = len(harvests)
+    
+    obs_query = db.query(models.RecoveryObservation).filter(
+        models.RecoveryObservation.tree_id == tree_id,
+        models.RecoveryObservation.observation_date >= start_date,
+        models.RecoveryObservation.observation_date <= end_date
+    )
+    
+    if incision_id:
+        obs_query = obs_query.filter(models.RecoveryObservation.incision_id == incision_id)
+    else:
+        obs_query = obs_query.filter(models.RecoveryObservation.incision_id == None)
+    
+    observations = obs_query.all()
+    total_obs = len(observations)
+    abnormal_count = sum(1 for o in observations if o.is_abnormal)
+    abnormal_rate = round(abnormal_count / total_obs * 100, 2) if total_obs > 0 else 0.0
+    
+    avg_quality = 0.0
+    if total_obs > 0:
+        avg_quality = round(
+            sum(calculate_quality_score(o.tree_condition) for o in observations) / total_obs,
+            2
+        )
+    
+    unit_output_cost = round(total_cost / total_yield, 2) if total_yield > 0 else 0.0
+    input_output_ratio = round(total_yield / total_cost, 4) if total_cost > 0 else 0.0
+    
+    yield_score = 0.0
+    if harvest_count > 0:
+        avg_yield = total_yield / harvest_count
+        if avg_yield >= 0.5:
+            yield_score = 25.0
+        elif avg_yield >= 0.4:
+            yield_score = 20.0
+        elif avg_yield >= 0.3:
+            yield_score = 15.0
+        elif avg_yield >= 0.2:
+            yield_score = 10.0
+        elif avg_yield >= 0.1:
+            yield_score = 5.0
+    
+    cost_score = 0.0
+    if total_yield > 0:
+        if unit_output_cost <= 100:
+            cost_score = 25.0
+        elif unit_output_cost <= 200:
+            cost_score = 20.0
+        elif unit_output_cost <= 300:
+            cost_score = 15.0
+        elif unit_output_cost <= 500:
+            cost_score = 10.0
+        elif unit_output_cost <= 800:
+            cost_score = 5.0
+    
+    quality_score = 0.0
+    if avg_quality >= 4.5:
+        quality_score = 25.0
+    elif avg_quality >= 4.0:
+        quality_score = 20.0
+    elif avg_quality >= 3.5:
+        quality_score = 15.0
+    elif avg_quality >= 3.0:
+        quality_score = 10.0
+    elif avg_quality >= 2.0:
+        quality_score = 5.0
+    
+    abnormal_score = 0.0
+    if abnormal_rate <= 5:
+        abnormal_score = 25.0
+    elif abnormal_rate <= 10:
+        abnormal_score = 20.0
+    elif abnormal_rate <= 20:
+        abnormal_score = 15.0
+    elif abnormal_rate <= 30:
+        abnormal_score = 10.0
+    elif abnormal_rate <= 50:
+        abnormal_score = 5.0
+    
+    overall_score = round(yield_score + cost_score + quality_score + abnormal_score, 2)
+    
+    if overall_score >= 80:
+        efficiency_level = "优秀"
+    elif overall_score >= 60:
+        efficiency_level = "良好"
+    elif overall_score >= 40:
+        efficiency_level = "中等"
+    elif overall_score >= 20:
+        efficiency_level = "较差"
+    else:
+        efficiency_level = "低效"
+    
+    is_inefficient = overall_score < 40 or unit_output_cost > 500 or (total_cost > 0 and total_yield == 0)
+    
+    inefficient_reasons = []
+    if unit_output_cost > 500:
+        inefficient_reasons.append(f"单位出漆成本过高（{unit_output_cost}元/kg，超过500元/kg预警线）")
+    if abnormal_rate > 20:
+        inefficient_reasons.append(f"异常率偏高（{abnormal_rate}%）")
+    if avg_quality < 3.0:
+        inefficient_reasons.append(f"恢复质量较差（{avg_quality}/5分）")
+    if total_cost > 0 and total_yield == 0:
+        inefficient_reasons.append("有养护投入但无产出")
+    if yield_score < 10:
+        inefficient_reasons.append("产量表现不佳")
+    
+    suggestions = []
+    if unit_output_cost > 300:
+        suggestions.append("建议优化养护成本结构，优先采用高性价比的养护方式")
+    if abnormal_rate > 10:
+        suggestions.append("建议增加观察频率，及时发现并处理异常情况")
+    if avg_quality < 3.5:
+        suggestions.append("建议加强树皮养护，提升树体恢复质量")
+    if total_labor > 50 and input_output_ratio < 0.01:
+        suggestions.append("建议优化人工安排，提高劳动效率")
+    
+    has_data = len(maintenance_records) > 0 or len(harvests) > 0 or len(observations) > 0
+    
+    existing_eval = db.query(models.MaintenanceEvaluation).filter(
+        models.MaintenanceEvaluation.tree_id == tree_id,
+        models.MaintenanceEvaluation.incision_id == incision_id,
+        models.MaintenanceEvaluation.year == year,
+        models.MaintenanceEvaluation.season == season,
+        models.MaintenanceEvaluation.batch_no == batch_no
+    ).first()
+    
+    if not has_data:
+        if existing_eval:
+            db.delete(existing_eval)
+        return None
+    
+    if existing_eval:
+        existing_eval.total_maintenance_cost = total_cost
+        existing_eval.total_labor_hours = total_labor
+        existing_eval.total_yield = total_yield
+        existing_eval.harvest_count = harvest_count
+        existing_eval.abnormal_count = abnormal_count
+        existing_eval.total_observations = total_obs
+        existing_eval.abnormal_rate = abnormal_rate
+        existing_eval.avg_recovery_quality = avg_quality
+        existing_eval.unit_output_cost = unit_output_cost
+        existing_eval.input_output_ratio = input_output_ratio
+        existing_eval.yield_score = yield_score
+        existing_eval.cost_score = cost_score
+        existing_eval.quality_score = quality_score
+        existing_eval.abnormal_score = abnormal_score
+        existing_eval.overall_score = overall_score
+        existing_eval.efficiency_level = efficiency_level
+        existing_eval.is_inefficient = is_inefficient
+        existing_eval.inefficient_reason = "；".join(inefficient_reasons) if inefficient_reasons else None
+        existing_eval.suggestions = "；".join(suggestions) if suggestions else None
+        existing_eval.maintenance_type = "、".join(maintenance_types) if maintenance_types else None
+        evaluation = existing_eval
+    else:
+        evaluation = models.MaintenanceEvaluation(
+            tree_id=tree_id,
+            incision_id=incision_id,
+            year=year,
+            season=season,
+            batch_no=batch_no,
+            maintenance_type="、".join(maintenance_types) if maintenance_types else None,
+            total_maintenance_cost=total_cost,
+            total_labor_hours=total_labor,
+            total_yield=total_yield,
+            harvest_count=harvest_count,
+            abnormal_count=abnormal_count,
+            total_observations=total_obs,
+            abnormal_rate=abnormal_rate,
+            avg_recovery_quality=avg_quality,
+            unit_output_cost=unit_output_cost,
+            input_output_ratio=input_output_ratio,
+            yield_score=yield_score,
+            cost_score=cost_score,
+            quality_score=quality_score,
+            abnormal_score=abnormal_score,
+            overall_score=overall_score,
+            efficiency_level=efficiency_level,
+            is_inefficient=is_inefficient,
+            inefficient_reason="；".join(inefficient_reasons) if inefficient_reasons else None,
+            suggestions="；".join(suggestions) if suggestions else None
+        )
+        db.add(evaluation)
+    
+    db.flush()
+    return evaluation
+
+
+def recalculate_maintenance_evaluation(db: Session):
+    today = date.today()
+    current_year = today.year
+    current_season = get_season(today)
+    
+    seasons_to_calculate = []
+    for y in range(current_year - 2, current_year + 1):
+        for s in ["春季", "夏季", "秋季", "冬季"]:
+            if y == current_year and s == current_season:
+                seasons_to_calculate.append((y, s))
+            elif y < current_year:
+                seasons_to_calculate.append((y, s))
+            elif y == current_year:
+                season_order = ["春季", "夏季", "秋季", "冬季"]
+                if season_order.index(s) < season_order.index(current_season):
+                    seasons_to_calculate.append((y, s))
+    
+    trees = db.query(models.LacquerTree).all()
+    
+    for tree in trees:
+        for year, season in seasons_to_calculate:
+            evaluate_maintenance_for_tree_incision(db, tree.id, None, year, season)
+            
+            incisions = db.query(models.Incision).filter(
+                models.Incision.tree_id == tree.id
+            ).all()
+            for inc in incisions:
+                evaluate_maintenance_for_tree_incision(db, inc.tree_id, inc.id, year, season)
+    
+    db.commit()
+
+
+def generate_seasonal_recommendations(db: Session):
+    today = date.today()
+    current_year = today.year
+    current_season = get_season(today)
+    next_season = get_next_season(current_season)
+    next_year = current_year if next_season != "春季" else current_year + 1
+    
+    seasons_to_generate = [
+        (current_year, current_season),
+        (next_year, next_season)
+    ]
+    
+    for year, season in seasons_to_generate:
+        start_date, end_date = get_season_date_range(year, season)
+        
+        historical_evals = db.query(models.MaintenanceEvaluation).filter(
+            models.MaintenanceEvaluation.season == season
+        ).all()
+        
+        if not historical_evals:
+            continue
+        
+        fert_cost = 0.0
+        pest_cost = 0.0
+        bark_cost = 0.0
+        fert_labor = 0.0
+        pest_labor = 0.0
+        bark_labor = 0.0
+        
+        maintenance_records = db.query(models.MaintenanceRecord).filter(
+            models.MaintenanceRecord.maintenance_date >= start_date.replace(year=year-1),
+            models.MaintenanceRecord.maintenance_date <= end_date.replace(year=year-1)
+        ).all()
+        
+        for r in maintenance_records:
+            if r.project_type == "施肥":
+                fert_cost += r.total_cost
+                fert_labor += r.labor_hours
+            elif r.project_type == "病虫处理":
+                pest_cost += r.total_cost
+                pest_labor += r.labor_hours
+            elif r.project_type == "树皮养护":
+                bark_cost += r.total_cost
+                bark_labor += r.labor_hours
+        
+        avg_yield_score = sum(e.yield_score for e in historical_evals) / len(historical_evals)
+        avg_cost_score = sum(e.cost_score for e in historical_evals) / len(historical_evals)
+        avg_quality_score = sum(e.quality_score for e in historical_evals) / len(historical_evals)
+        avg_abnormal_score = sum(e.abnormal_score for e in historical_evals) / len(historical_evals)
+        
+        fertilization_suggestion = generate_fertilization_suggestion(season, avg_quality_score, fert_cost)
+        pest_control_suggestion = generate_pest_control_suggestion(season, avg_abnormal_score, pest_cost)
+        bark_care_suggestion = generate_bark_care_suggestion(season, avg_quality_score, bark_cost)
+        labor_arrangement_suggestion = generate_labor_suggestion(season, fert_labor + pest_labor + bark_labor)
+        
+        overall_strategy = generate_overall_strategy(season, avg_yield_score, avg_cost_score)
+        key_points = generate_key_points(season, avg_yield_score, avg_quality_score, avg_abnormal_score)
+        expected_effect = generate_expected_effect(season, avg_yield_score, avg_quality_score)
+        
+        estimated_cost = round((fert_cost + pest_cost + bark_cost) * 1.1, 2)
+        estimated_labor = round((fert_labor + pest_labor + bark_labor) * 1.1, 1)
+        
+        existing_rec = db.query(models.SeasonalRecommendation).filter(
+            models.SeasonalRecommendation.year == year,
+            models.SeasonalRecommendation.season == season
+        ).first()
+        
+        if existing_rec:
+            existing_rec.fertilization_suggestion = fertilization_suggestion
+            existing_rec.pest_control_suggestion = pest_control_suggestion
+            existing_rec.bark_care_suggestion = bark_care_suggestion
+            existing_rec.labor_arrangement_suggestion = labor_arrangement_suggestion
+            existing_rec.overall_strategy = overall_strategy
+            existing_rec.key_points = key_points
+            existing_rec.expected_effect = expected_effect
+            existing_rec.estimated_cost = estimated_cost
+            existing_rec.estimated_labor = estimated_labor
+        else:
+            new_rec = models.SeasonalRecommendation(
+                year=year,
+                season=season,
+                fertilization_suggestion=fertilization_suggestion,
+                pest_control_suggestion=pest_control_suggestion,
+                bark_care_suggestion=bark_care_suggestion,
+                labor_arrangement_suggestion=labor_arrangement_suggestion,
+                overall_strategy=overall_strategy,
+                key_points=key_points,
+                expected_effect=expected_effect,
+                estimated_cost=estimated_cost,
+                estimated_labor=estimated_labor
+            )
+            db.add(new_rec)
+    
+    db.commit()
+
+
+def generate_fertilization_suggestion(season: str, quality_score: float, last_cost: float) -> str:
+    suggestions = []
+    
+    if season == "春季":
+        suggestions.append("春季是漆树生长旺季，建议在3月初施用腐熟有机肥作为基肥")
+        suggestions.append("每株施用量约5-8kg，采用环沟施肥法，深度20-30cm")
+        if quality_score < 15:
+            suggestions.append("建议增加磷钾肥比例，促进根系发育和树势恢复")
+        suggestions.append("4月中下旬可追施一次氮肥，促进新梢生长")
+    elif season == "夏季":
+        suggestions.append("夏季高温，建议减少施肥量，避免烧根")
+        suggestions.append("可采用叶面喷施的方式补充微量元素")
+        if last_cost > 500:
+            suggestions.append("建议采用缓释肥料，延长肥效，减少施肥频次")
+        suggestions.append("注意雨后及时补肥，防止养分流失")
+    elif season == "秋季":
+        suggestions.append("秋季采收结束后，及时施用采后肥，恢复树势")
+        suggestions.append("以有机肥为主，配合适量磷钾肥，增强抗寒能力")
+        suggestions.append("每株施用量约8-10kg，为越冬和来年生长储备养分")
+    elif season == "冬季":
+        suggestions.append("冬季休眠期，建议施用基肥，改良土壤结构")
+        suggestions.append("结合冬季清园，深翻土壤，埋入有机肥")
+        if quality_score < 15:
+            suggestions.append("可适当增加硼肥、锌肥等微量元素，改善树皮质量")
+    
+    return "；".join(suggestions)
+
+
+def generate_pest_control_suggestion(season: str, abnormal_score: float, last_cost: float) -> str:
+    suggestions = []
+    
+    if season == "春季":
+        suggestions.append("春季是病虫害高发期，需重点防治蚜虫、红蜘蛛")
+        suggestions.append("3月中下旬喷施石硫合剂，预防病害发生")
+        if abnormal_score < 15:
+            suggestions.append("建议增加巡查频率，每7-10天巡查一次")
+        suggestions.append("注意观察新梢和叶片，及时发现虫害迹象")
+    elif season == "夏季":
+        suggestions.append("夏季高温高湿，需重点防治天牛、介壳虫和根腐病")
+        suggestions.append("建议采用生物防治为主，化学防治为辅的策略")
+        suggestions.append("保持林间通风透光，降低湿度，减少病害发生")
+        if last_cost > 300:
+            suggestions.append("建议安装诱虫灯，减少农药使用量")
+    elif season == "秋季":
+        suggestions.append("秋季采收后，及时清理果园，减少病虫源")
+        suggestions.append("喷施一次保护性杀菌剂，保护伤口")
+        if abnormal_score < 15:
+            suggestions.append("建议对异常树体进行重点处理，刮除病斑，涂抹药剂")
+        suggestions.append("检查树干，发现蛀孔及时注药防治天牛幼虫")
+    elif season == "冬季":
+        suggestions.append("冬季清园是全年病虫害防治的关键")
+        suggestions.append("清除枯枝落叶，刮除老树皮，集中烧毁")
+        suggestions.append("树干涂白，防止冻害和病虫害越冬")
+        suggestions.append("喷施5波美度石硫合剂，消灭越冬病虫源")
+    
+    return "；".join(suggestions)
+
+
+def generate_bark_care_suggestion(season: str, quality_score: float, last_cost: float) -> str:
+    suggestions = []
+    
+    if season == "春季":
+        suggestions.append("春季树皮开始恢复生长，需避免机械损伤")
+        suggestions.append("检查割口恢复情况，对愈合不良的割口进行处理")
+        if quality_score < 15:
+            suggestions.append("建议使用树皮愈合剂涂抹割口，促进愈合")
+        suggestions.append("新梢萌发期，注意保护嫩枝，避免风折")
+    elif season == "夏季":
+        suggestions.append("夏季高温，需防止树皮日灼")
+        suggestions.append("可采用树干包草或涂白的方式降低树皮温度")
+        suggestions.append("及时清除树干上的寄生植物和苔藓")
+        if last_cost > 200:
+            suggestions.append("建议推广使用环保型树皮保护剂")
+    elif season == "秋季":
+        suggestions.append("秋季采收时，注意保护树皮，避免过度切割")
+        suggestions.append("采收后及时对割口进行消毒处理")
+        if quality_score < 15:
+            suggestions.append("建议对割口进行保湿处理，促进愈合")
+        suggestions.append("检查树皮损伤情况，及时修复较大伤口")
+    elif season == "冬季":
+        suggestions.append("冬季树干涂白是保护树皮的重要措施")
+        suggestions.append("涂白剂配方：生石灰10份、硫磺1份、食盐0.5份、水40份")
+        suggestions.append("涂白高度1.2-1.5米，重点是树干向阳面")
+        suggestions.append("注意防止冻害，极端低温天气可采取包裹保温措施")
+    
+    return "；".join(suggestions)
+
+
+def generate_labor_suggestion(season: str, total_labor: float) -> str:
+    suggestions = []
+    
+    if season == "春季":
+        suggestions.append("春季工作重点：施肥、病虫害防治、新梢管理")
+        suggestions.append("建议配备3-5人的专业养护队伍")
+        if total_labor > 100:
+            suggestions.append("考虑采用机械化作业，提高施肥效率")
+        suggestions.append("合理安排工时，避开雨天作业")
+    elif season == "夏季":
+        suggestions.append("夏季工作重点：防暑降温、病虫害监测、树体巡查")
+        suggestions.append("建议调整作业时间，避开中午高温时段")
+        suggestions.append("早晚作业，中午安排休息，防止人员中暑")
+        suggestions.append("增加临时用工，应对夏季病虫害高发期")
+    elif season == "秋季":
+        suggestions.append("秋季工作重点：采收、采后养护、清园")
+        suggestions.append("采收期需配备充足的熟练采收工人")
+        suggestions.append("采后及时安排养护人员进行树体恢复处理")
+        if total_labor > 150:
+            suggestions.append("建议分组作业，提高采收和养护效率")
+    elif season == "冬季":
+        suggestions.append("冬季工作重点：清园、修剪、树干涂白、基肥施用")
+        suggestions.append("可利用农闲期对养护人员进行技术培训")
+        suggestions.append("合理安排冬季作业，避开极端低温天气")
+        suggestions.append("做好冬季防火工作")
+    
+    return "；".join(suggestions)
+
+
+def generate_overall_strategy(season: str, yield_score: float, cost_score: float) -> str:
+    if season == "春季":
+        if yield_score < 10 and cost_score < 10:
+            return "春季以\"促生长、提产量\"为核心，重点加强施肥和病虫害防治，同时优化成本结构，提高投入产出比"
+        elif yield_score < 10:
+            return "春季以\"促生长、提产量\"为核心，重点加强施肥和新梢管理，促进漆树健壮生长"
+        elif cost_score < 10:
+            return "春季以\"控成本、提效率\"为核心，在保证养护质量的前提下，优化施肥方案，降低单位成本"
+        return "春季以\"保稳产、提质量\"为核心，维持现有养护水平，重点关注树势恢复和病虫害预防"
+    elif season == "夏季":
+        if yield_score < 10 and cost_score < 10:
+            return "夏季以\"保产能、降成本\"为核心，重点做好防暑降温、病虫害监测，同时优化人工安排，提高作业效率"
+        elif yield_score < 10:
+            return "夏季以\"保产能、提效率\"为核心，重点做好树体养护，减少高温对产量的影响"
+        elif cost_score < 10:
+            return "夏季以\"降成本、控风险\"为核心，重点优化农药使用，推广生物防治，降低养护成本"
+        return "夏季以\"稳生产、保质量\"为核心，维持正常养护，重点关注极端天气应对"
+    elif season == "秋季":
+        if yield_score < 10 and cost_score < 10:
+            return "秋季以\"提产量、促恢复\"为核心，重点做好采收管理和采后养护，同时优化采收效率，降低单位成本"
+        elif yield_score < 10:
+            return "秋季以\"提产量、保质量\"为核心，重点做好适时采收，提高采收质量和效率"
+        elif cost_score < 10:
+            return "秋季以\"促恢复、控成本\"为核心，重点做好采后树势恢复，同时合理控制养护投入"
+        return "秋季以\"保采收、促恢复\"为核心，做好采收和采后养护的平衡，为来年生产打好基础"
+    elif season == "冬季":
+        if yield_score < 10 and cost_score < 10:
+            return "冬季以\"强基础、提效益\"为核心，重点做好清园和基肥施用，同时优化冬季作业安排，降低人工成本"
+        elif yield_score < 10:
+            return "冬季以\"强基础、提树势\"为核心，重点做好基肥施用和树体修剪，增强树势"
+        elif cost_score < 10:
+            return "冬季以\"提效益、降成本\"为核心，重点优化冬季养护方案，合理控制投入"
+        return "冬季以\"养树势、备来年\"为核心，做好清园、修剪、涂白等基础工作，为来年丰产创造条件"
+
+
+def generate_key_points(season: str, yield_score: float, quality_score: float, abnormal_score: float) -> str:
+    points = []
+    
+    if season == "春季":
+        points.append("适时施肥，保证养分供应")
+        if abnormal_score < 15:
+            points.append("加强病虫害监测与防治")
+        if quality_score < 15:
+            points.append("做好割口愈合管理")
+        points.append("注意倒春寒防护")
+    elif season == "夏季":
+        points.append("防暑降温，防止日灼")
+        if abnormal_score < 15:
+            points.append("重点防治天牛、介壳虫")
+        if quality_score < 15:
+            points.append("加强树皮养护，防止树皮损伤")
+        points.append("雨季注意排水防涝")
+    elif season == "秋季":
+        points.append("适时采收，保证质量")
+        if quality_score < 15:
+            points.append("采收后及时进行割口处理")
+        if abnormal_score < 15:
+            points.append("采后清园，减少病虫源")
+        points.append("采后施肥，恢复树势")
+    elif season == "冬季":
+        points.append("彻底清园，消灭越冬病虫")
+        points.append("树干涂白，防止冻害")
+        if quality_score < 15:
+            points.append("刮除老树皮，促进树皮更新")
+        points.append("深翻改土，施用基肥")
+    
+    return "；".join(points)
+
+
+def generate_expected_effect(season: str, yield_score: float, quality_score: float) -> str:
+    effects = []
+    
+    yield_improvement = "+10%" if yield_score < 15 else "+5%"
+    quality_improvement = "提升0.5分" if quality_score < 15 else "维持现有水平"
+    abnormal_reduction = "降低10%"
+    
+    if season == "春季":
+        effects.append(f"预计春季产量可提升{yield_improvement}")
+        effects.append(f"树体恢复质量{quality_improvement}")
+        effects.append(f"病虫害发生率{abnormal_reduction}")
+        effects.append("新梢生长健壮，为夏梢培养打好基础")
+    elif season == "夏季":
+        effects.append(f"预计夏季产量可维持稳定或{yield_improvement}")
+        effects.append(f"树皮质量{quality_improvement}")
+        effects.append(f"高温危害发生率{abnormal_reduction}")
+        effects.append("树势保持健壮，顺利越夏")
+    elif season == "秋季":
+        effects.append(f"预计秋季采收产量{yield_improvement}")
+        effects.append(f"树皮愈合质量{quality_improvement}")
+        effects.append("采后树势恢复良好")
+        effects.append("为冬季休眠和来年生长储备充足养分")
+    elif season == "冬季":
+        effects.append("树体安全越冬，无严重冻害")
+        effects.append("越冬病虫源显著减少")
+        effects.append(f"土壤肥力{quality_improvement}")
+        effects.append("来年春季树势健壮，丰产基础好")
+    
+    return "；".join(effects)
+
+
+def recalculate_seasonal_comparisons(db: Session):
+    today = date.today()
+    current_year = today.year
+    
+    for year in range(current_year - 2, current_year + 1):
+        for season in ["春季", "夏季", "秋季", "冬季"]:
+            start_date, end_date = get_season_date_range(year, season)
+            
+            evals = db.query(models.MaintenanceEvaluation).filter(
+                models.MaintenanceEvaluation.year == year,
+                models.MaintenanceEvaluation.season == season
+            ).all()
+            
+            if not evals:
+                continue
+            
+            total_cost = sum(e.total_maintenance_cost for e in evals)
+            total_labor = sum(e.total_labor_hours for e in evals)
+            total_yield = sum(e.total_yield for e in evals)
+            avg_unit_cost = round(sum(e.unit_output_cost for e in evals) / len(evals), 2) if evals else 0.0
+            avg_abnormal_rate = round(sum(e.abnormal_rate for e in evals) / len(evals), 2) if evals else 0.0
+            avg_overall_score = round(sum(e.overall_score for e in evals) / len(evals), 2) if evals else 0.0
+            
+            tree_ids = list(set(e.tree_id for e in evals))
+            incision_ids = list(set(e.incision_id for e in evals if e.incision_id))
+            
+            maintenance_records = db.query(models.MaintenanceRecord).filter(
+                models.MaintenanceRecord.maintenance_date >= start_date,
+                models.MaintenanceRecord.maintenance_date <= end_date
+            ).all()
+            
+            cost_by_type = {}
+            labor_by_type = {}
+            for r in maintenance_records:
+                cost_by_type[r.project_type] = cost_by_type.get(r.project_type, 0) + r.total_cost
+                labor_by_type[r.project_type] = labor_by_type.get(r.project_type, 0) + r.labor_hours
+            
+            existing_comp = db.query(models.SeasonalComparison).filter(
+                models.SeasonalComparison.year == year,
+                models.SeasonalComparison.season == season
+            ).first()
+            
+            if existing_comp:
+                existing_comp.total_maintenance_cost = total_cost
+                existing_comp.total_labor_hours = total_labor
+                existing_comp.total_yield = total_yield
+                existing_comp.avg_unit_cost = avg_unit_cost
+                existing_comp.avg_abnormal_rate = avg_abnormal_rate
+                existing_comp.avg_overall_score = avg_overall_score
+                existing_comp.tree_count = len(tree_ids)
+                existing_comp.incision_count = len(incision_ids)
+                existing_comp.cost_by_type = json.dumps(cost_by_type, ensure_ascii=False)
+                existing_comp.labor_by_type = json.dumps(labor_by_type, ensure_ascii=False)
+            else:
+                new_comp = models.SeasonalComparison(
+                    year=year,
+                    season=season,
+                    total_maintenance_cost=total_cost,
+                    total_labor_hours=total_labor,
+                    total_yield=total_yield,
+                    avg_unit_cost=avg_unit_cost,
+                    avg_abnormal_rate=avg_abnormal_rate,
+                    avg_overall_score=avg_overall_score,
+                    tree_count=len(tree_ids),
+                    incision_count=len(incision_ids),
+                    cost_by_type=json.dumps(cost_by_type, ensure_ascii=False),
+                    labor_by_type=json.dumps(labor_by_type, ensure_ascii=False)
+                )
+                db.add(new_comp)
+    
+    db.commit()
+
+
+def get_inefficient_warnings(db: Session) -> List[dict]:
+    today = date.today()
+    current_year = today.year
+    current_season = get_season(today)
+    
+    inefficient_evals = db.query(models.MaintenanceEvaluation).filter(
+        models.MaintenanceEvaluation.is_inefficient == True,
+        models.MaintenanceEvaluation.year == current_year,
+        models.MaintenanceEvaluation.season == current_season
+    ).order_by(models.MaintenanceEvaluation.overall_score).all()
+    
+    results = []
+    for eval in inefficient_evals:
+        tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == eval.tree_id).first()
+        incision = db.query(models.Incision).filter(models.Incision.id == eval.incision_id).first() if eval.incision_id else None
+        results.append({
+            "id": eval.id,
+            "tree_code": tree.tree_code if tree else "未知",
+            "incision_code": incision.incision_code if incision else "整树养护",
+            "season": eval.season,
+            "overall_score": eval.overall_score,
+            "efficiency_level": eval.efficiency_level,
+            "total_cost": round(eval.total_maintenance_cost, 2),
+            "total_yield": round(eval.total_yield, 2),
+            "unit_cost": round(eval.unit_output_cost, 2),
+            "abnormal_rate": eval.abnormal_rate,
+            "inefficient_reason": eval.inefficient_reason,
+            "suggestions": eval.suggestions,
+            "type": "incision" if eval.incision_id else "tree"
+        })
+    
+    return results
+
+
+def get_seasonal_suggestions(db: Session) -> dict:
+    today = date.today()
+    current_year = today.year
+    current_season = get_season(today)
+    
+    current_rec = db.query(models.SeasonalRecommendation).filter(
+        models.SeasonalRecommendation.year == current_year,
+        models.SeasonalRecommendation.season == current_season
+    ).first()
+    
+    next_season = get_next_season(current_season)
+    next_year = current_year if next_season != "春季" else current_year + 1
+    
+    next_rec = db.query(models.SeasonalRecommendation).filter(
+        models.SeasonalRecommendation.year == next_year,
+        models.SeasonalRecommendation.season == next_season
+    ).first()
+    
+    return {
+        "current": {
+            "season": current_season,
+            "year": current_year,
+            "recommendation": current_rec
+        },
+        "next": {
+            "season": next_season,
+            "year": next_year,
+            "recommendation": next_rec
+        }
+    }
+
+
+def get_evaluation_scores(db: Session) -> dict:
+    today = date.today()
+    current_year = today.year
+    
+    evals = db.query(models.MaintenanceEvaluation).filter(
+        models.MaintenanceEvaluation.year == current_year
+    ).all()
+    
+    if not evals:
+        evals = db.query(models.MaintenanceEvaluation).filter(
+            models.MaintenanceEvaluation.year == current_year - 1
+        ).all()
+    
+    season_scores = {}
+    for s in ["春季", "夏季", "秋季", "冬季"]:
+        season_evals = [e for e in evals if e.season == s]
+        if season_evals:
+            season_scores[s] = {
+                "avg_overall_score": round(sum(e.overall_score for e in season_evals) / len(season_evals), 2),
+                "avg_yield_score": round(sum(e.yield_score for e in season_evals) / len(season_evals), 2),
+                "avg_cost_score": round(sum(e.cost_score for e in season_evals) / len(season_evals), 2),
+                "avg_quality_score": round(sum(e.quality_score for e in season_evals) / len(season_evals), 2),
+                "avg_abnormal_score": round(sum(e.abnormal_score for e in season_evals) / len(season_evals), 2),
+                "count": len(season_evals),
+                "total_cost": round(sum(e.total_maintenance_cost for e in season_evals), 2),
+                "total_yield": round(sum(e.total_yield for e in season_evals), 2),
+                "avg_unit_cost": round(sum(e.unit_output_cost for e in season_evals) / len(season_evals), 2),
+                "avg_abnormal_rate": round(sum(e.abnormal_rate for e in season_evals) / len(season_evals), 2)
+            }
+    
+    return season_scores
 
 
 def get_next_harvest_dates(db: Session) -> List[dict]:
@@ -251,6 +1038,13 @@ async def index(request: Request, db: Session = Depends(get_db)):
     cost_warnings = get_cost_warnings(db)
     total_maintenance_cost = db.query(func.sum(models.MaintenanceRecord.total_cost)).scalar() or 0.0
     total_labor_hours = db.query(func.sum(models.MaintenanceRecord.labor_hours)).scalar() or 0.0
+    
+    seasonal_suggestions = get_seasonal_suggestions(db)
+    inefficient_warnings = get_inefficient_warnings(db)
+    
+    current_season = get_season(date.today())
+    season_emoji = {"春季": "🌸", "夏季": "☀️", "秋季": "🍂", "冬季": "❄️"}.get(current_season, "🌿")
+    
     return templates.TemplateResponse("index.html", {
         "request": request,
         "tree_count": tree_count,
@@ -265,7 +1059,11 @@ async def index(request: Request, db: Session = Depends(get_db)):
         "abnormal_warnings": abnormal_warnings[:10],
         "cost_warnings": cost_warnings,
         "total_maintenance_cost": round(total_maintenance_cost, 2),
-        "total_labor_hours": round(total_labor_hours, 1)
+        "total_labor_hours": round(total_labor_hours, 1),
+        "seasonal_suggestions": seasonal_suggestions,
+        "inefficient_warnings": inefficient_warnings[:10],
+        "current_season": current_season,
+        "season_emoji": season_emoji
     })
 
 
@@ -1040,8 +1838,30 @@ async def get_method_comparison(db: Session = Depends(get_db)):
 
 @app.get("/charts", response_class=HTMLResponse)
 async def charts_page(request: Request, db: Session = Depends(get_db)):
+    recalculate_all_reminders(db)
     trees = db.query(models.LacquerTree).order_by(models.LacquerTree.tree_code).all()
-    return templates.TemplateResponse("charts.html", {"request": request, "trees": trees})
+    evaluation_scores = get_evaluation_scores(db)
+    seasonal_suggestions = get_seasonal_suggestions(db)
+    inefficient_warnings = get_inefficient_warnings(db)
+    
+    seasonal_comparisons = db.query(models.SeasonalComparison).order_by(
+        models.SeasonalComparison.year.desc(),
+        models.SeasonalComparison.season
+    ).all()
+    
+    current_season = get_season(date.today())
+    season_emoji = {"春季": "🌸", "夏季": "☀️", "秋季": "🍂", "冬季": "❄️"}.get(current_season, "🌿")
+    
+    return templates.TemplateResponse("charts.html", {
+        "request": request, 
+        "trees": trees,
+        "evaluation_scores": evaluation_scores,
+        "seasonal_suggestions": seasonal_suggestions,
+        "inefficient_warnings": inefficient_warnings,
+        "seasonal_comparisons": seasonal_comparisons,
+        "current_season": current_season,
+        "season_emoji": season_emoji
+    })
 
 
 @app.get("/plans", response_class=HTMLResponse)
@@ -1944,3 +2764,166 @@ async def cost_analysis_page(request: Request, db: Session = Depends(get_db)):
         "trees": trees, "incisions": incisions, "project_types": project_types,
         "cost_warnings": cost_warnings
     })
+
+
+@app.get("/api/maintenance-evaluation-scores")
+async def get_maintenance_evaluation_scores(db: Session = Depends(get_db)):
+    scores = get_evaluation_scores(db)
+    return JSONResponse(scores)
+
+
+@app.get("/api/seasonal-comparison")
+async def get_seasonal_comparison_api(db: Session = Depends(get_db)):
+    comparisons = db.query(models.SeasonalComparison).order_by(
+        models.SeasonalComparison.year.asc(),
+        models.SeasonalComparison.season
+    ).all()
+    
+    seasons = [f"{c.year}年{c.season}" for c in comparisons]
+    total_costs = [round(c.total_maintenance_cost, 2) for c in comparisons]
+    total_labors = [round(c.total_labor_hours, 1) for c in comparisons]
+    total_yields = [round(c.total_yield, 2) for c in comparisons]
+    avg_unit_costs = [c.avg_unit_cost for c in comparisons]
+    avg_abnormal_rates = [c.avg_abnormal_rate for c in comparisons]
+    avg_overall_scores = [c.avg_overall_score for c in comparisons]
+    
+    details = []
+    for c in comparisons:
+        cost_by_type = json.loads(c.cost_by_type) if c.cost_by_type else {}
+        labor_by_type = json.loads(c.labor_by_type) if c.labor_by_type else {}
+        details.append({
+            "year": c.year,
+            "season": c.season,
+            "total_maintenance_cost": round(c.total_maintenance_cost, 2),
+            "total_labor_hours": round(c.total_labor_hours, 1),
+            "total_yield": round(c.total_yield, 2),
+            "avg_unit_cost": c.avg_unit_cost,
+            "avg_abnormal_rate": c.avg_abnormal_rate,
+            "avg_overall_score": c.avg_overall_score,
+            "tree_count": c.tree_count,
+            "incision_count": c.incision_count,
+            "cost_by_type": cost_by_type,
+            "labor_by_type": labor_by_type
+        })
+    
+    return JSONResponse({
+        "seasons": seasons,
+        "total_costs": total_costs,
+        "total_labors": total_labors,
+        "total_yields": total_yields,
+        "avg_unit_costs": avg_unit_costs,
+        "avg_abnormal_rates": avg_abnormal_rates,
+        "avg_overall_scores": avg_overall_scores,
+        "details": details
+    })
+
+
+@app.get("/api/seasonal-recommendation")
+async def get_seasonal_recommendation_api(db: Session = Depends(get_db)):
+    suggestions = get_seasonal_suggestions(db)
+    result = {}
+    
+    for key in ["current", "next"]:
+        rec = suggestions[key].get("recommendation")
+        if rec:
+            result[key] = {
+                "season": suggestions[key]["season"],
+                "year": suggestions[key]["year"],
+                "fertilization_suggestion": rec.fertilization_suggestion,
+                "pest_control_suggestion": rec.pest_control_suggestion,
+                "bark_care_suggestion": rec.bark_care_suggestion,
+                "labor_arrangement_suggestion": rec.labor_arrangement_suggestion,
+                "overall_strategy": rec.overall_strategy,
+                "key_points": rec.key_points,
+                "expected_effect": rec.expected_effect,
+                "estimated_cost": rec.estimated_cost,
+                "estimated_labor": rec.estimated_labor,
+                "generated_at": rec.generated_at.strftime("%Y-%m-%d %H:%M:%S") if rec.generated_at else None
+            }
+        else:
+            result[key] = {
+                "season": suggestions[key]["season"],
+                "year": suggestions[key]["year"],
+                "recommendation": None
+            }
+    
+    return JSONResponse(result)
+
+
+@app.get("/api/inefficient-maintenance")
+async def get_inefficient_maintenance_api(db: Session = Depends(get_db)):
+    warnings = get_inefficient_warnings(db)
+    return JSONResponse({"inefficient_records": warnings})
+
+
+@app.get("/api/maintenance-evaluation-detail")
+async def get_maintenance_evaluation_detail(
+    tree_id: Optional[int] = None,
+    incision_id: Optional[int] = None,
+    year: Optional[int] = None,
+    season: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.MaintenanceEvaluation)
+    
+    if tree_id:
+        query = query.filter(models.MaintenanceEvaluation.tree_id == tree_id)
+    if incision_id:
+        query = query.filter(models.MaintenanceEvaluation.incision_id == incision_id)
+    if year:
+        query = query.filter(models.MaintenanceEvaluation.year == year)
+    if season:
+        query = query.filter(models.MaintenanceEvaluation.season == season)
+    
+    evaluations = query.order_by(
+        models.MaintenanceEvaluation.year.desc(),
+        models.MaintenanceEvaluation.season,
+        models.MaintenanceEvaluation.overall_score
+    ).all()
+    
+    result = []
+    for eval in evaluations:
+        tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == eval.tree_id).first()
+        incision = db.query(models.Incision).filter(models.Incision.id == eval.incision_id).first() if eval.incision_id else None
+        result.append({
+            "id": eval.id,
+            "tree_code": tree.tree_code if tree else "未知",
+            "incision_code": incision.incision_code if incision else "整树养护",
+            "year": eval.year,
+            "season": eval.season,
+            "batch_no": eval.batch_no,
+            "maintenance_type": eval.maintenance_type,
+            "total_maintenance_cost": round(eval.total_maintenance_cost, 2),
+            "total_labor_hours": round(eval.total_labor_hours, 1),
+            "total_yield": round(eval.total_yield, 2),
+            "harvest_count": eval.harvest_count,
+            "abnormal_count": eval.abnormal_count,
+            "total_observations": eval.total_observations,
+            "abnormal_rate": eval.abnormal_rate,
+            "avg_recovery_quality": eval.avg_recovery_quality,
+            "unit_output_cost": eval.unit_output_cost,
+            "input_output_ratio": eval.input_output_ratio,
+            "yield_score": eval.yield_score,
+            "cost_score": eval.cost_score,
+            "quality_score": eval.quality_score,
+            "abnormal_score": eval.abnormal_score,
+            "overall_score": eval.overall_score,
+            "efficiency_level": eval.efficiency_level,
+            "is_inefficient": eval.is_inefficient,
+            "inefficient_reason": eval.inefficient_reason,
+            "suggestions": eval.suggestions,
+            "evaluated_at": eval.evaluated_at.strftime("%Y-%m-%d %H:%M:%S") if eval.evaluated_at else None
+        })
+    
+    return JSONResponse({"evaluations": result})
+
+
+@app.post("/api/recalculate-evaluation")
+async def recalculate_evaluation_api(db: Session = Depends(get_db)):
+    try:
+        recalculate_maintenance_evaluation(db)
+        generate_seasonal_recommendations(db)
+        recalculate_seasonal_comparisons(db)
+        return JSONResponse({"status": "success", "message": "养护评估和推荐策略已重新计算完成"})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
