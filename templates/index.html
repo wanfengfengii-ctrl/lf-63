@@ -44,7 +44,69 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
   <div class="card">
     <div class="card-header">
-      <span>� 近期采收计划</span>
+      <span>🧪 质量异常预警</span>
+      <a href="/quality-analysis" class="btn btn-warning btn-sm">查看质量分析</a>
+    </div>
+    <div class="card-body">
+      {% if quality_warnings %}
+      <ul class="reminder-list">
+        {% for w in quality_warnings %}
+        <li class="reminder-item" style="border-left: 3px solid #f39c12;">
+          <div class="reminder-info">
+            <span class="reminder-tree">{{ w.tree_code }} · {{ w.incision_code }} ({{ w.harvest_date.strftime('%Y-%m-%d') }})</span>
+            <span class="reminder-sub">出漆量: {{ '%.2f'|format(w.yield_amount) }}kg · 等级: {{ w.quality_grade or '-' }}</span>
+            <span class="reminder-sub" style="color: #e74c3c;">
+              {% for issue in w.issues %}⚠️ {{ issue }}{% if not loop.last %} | {% endif %}{% endfor %}
+            </span>
+          </div>
+          <span class="badge badge-warning">异常</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <div>暂无质量异常预警</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">所有采收批次质量指标均在正常范围内</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span>📦 库存周转提醒</span>
+      <a href="/inventory" class="btn btn-info btn-sm">查看库存</a>
+    </div>
+    <div class="card-body">
+      {% if inventory_turnover_warnings %}
+      <ul class="reminder-list">
+        {% for w in inventory_turnover_warnings %}
+        <li class="reminder-item" style="border-left: 3px solid #e74c3c;">
+          <div class="reminder-info">
+            <span class="reminder-tree">{{ w.batch_no }} · {{ w.tree_code }}</span>
+            <span class="reminder-sub">入库: {{ w.storage_date.strftime('%Y-%m-%d') }} · 库存: {{ '%.2f'|format(w.stock_quantity) }}kg</span>
+            <span class="reminder-sub" style="color: #e74c3c;">在库 <strong>{{ w.days_in_stock }}</strong> 天 · 位置: {{ w.storage_location or '未指定' }}</span>
+          </div>
+          <span class="badge badge-danger">周转慢</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <div>暂无库存周转预警</div>
+        <div style="margin-top: 0.5rem; font-size: 0.85rem;">所有库存周转正常（入库≤90天）</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+  <div class="card">
+    <div class="card-header">
+      <span>📋 近期采收计划</span>
       <a href="/plans/new" class="btn btn-primary btn-sm">新增计划</a>
     </div>
     <div class="card-body">
@@ -154,6 +216,12 @@
         <a href="/harvests/new" class="btn btn-primary" style="justify-content: center; padding: 1rem;">
           🧪 新增采收
         </a>
+        <a href="/inventory/new" class="btn btn-success" style="justify-content: center; padding: 1rem; background: #27ae60;">
+          📦 新增入库
+        </a>
+        <a href="/sales/new" class="btn btn-warning" style="justify-content: center; padding: 1rem; background: #f39c12; color: #fff;">
+          💰 新增销售
+        </a>
         <a href="/plans/new" class="btn btn-secondary" style="justify-content: center; padding: 1rem;">
           📋 新增计划
         </a>
@@ -168,6 +236,9 @@
         </a>
         <a href="/maintenance/new" class="btn btn-primary" style="justify-content: center; padding: 1rem;">
           💰 新增养护
+        </a>
+        <a href="/quality-analysis" class="btn btn-info" style="justify-content: center; padding: 1rem; background: #2980b9;">
+          📊 质量分析
         </a>
       </div>
     </div>

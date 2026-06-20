@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{% if sale %}编辑销售{% else %}新增销售{% endif %} - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">{% if sale %}✏️ 编辑销售记录{% else %}💰 新增销售记录{% endif %}</h1>
+  <a href="/sales" class="btn btn-outline">← 返回列表</a>
+</div>
+
+{% if errors %}
+<div class="form-errors">
+  <strong>请修正以下错误：</strong>
+  <ul>
+    {% for field, msg in errors.items() %}
+    <li>{{ msg }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <form method="POST" action="{% if sale %}/sales/{{ sale.id }}/edit{% else %}/sales/new{% endif %}">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>库存批次 <span class="required">*</span></label>
+          <select name="inventory_id" required>
+            {% set ns = namespace(selected=form_data.inventory_id if form_data else (sale.inventory_id if sale else (preselected.id if preselected else ''))) %}
+            <option value="">请选择库存批次</option>
+            {% for inv in inventories %}
+            <option value="{{ inv.id }}" {% if ns.selected|string == inv.id|string %}selected{% endif %}>
+              {{ inv.batch_no }} - {{ inv.storage_location or '未指定位置' }} (剩余 {{ '%.2f'|format(inv.stock_quantity) }}kg)
+            </option>
+            {% endfor %}
+          </select>
+          {% if preselected and not sale %}
+          <small style="color: var(--text-secondary);">已自动选择库存批次</small>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>销售日期 <span class="required">*</span></label>
+          <input type="date" name="sale_date" required max="{{ today }}"
+            value="{{ form_data.sale_date if form_data else (sale.sale_date.strftime('%Y-%m-%d') if sale else today) }}">
+          {% if errors.sale_date %}
+          <span class="error-text">{{ errors.sale_date }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>客户名称</label>
+          <input type="text" name="customer" maxlength="100"
+            value="{{ form_data.customer if form_data else (sale.customer if sale else '') }}"
+            placeholder="如：XX工艺品有限公司">
+        </div>
+        <div class="form-group">
+          <label>销售数量（kg） <span class="required">*</span></label>
+          <input type="number" name="sale_quantity" required step="0.01" min="0"
+            value="{{ form_data.sale_quantity if form_data else (sale.sale_quantity if sale else '') }}"
+            placeholder="如：10.5">
+          {% if errors.sale_quantity %}
+          <span class="error-text">{{ errors.sale_quantity }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>单价（元/kg）</label>
+          <input type="number" name="unit_price" step="0.01" min="0"
+            value="{{ form_data.unit_price if form_data else (sale.unit_price if sale else '') }}"
+            placeholder="如：500">
+          {% if errors.unit_price %}
+          <span class="error-text">{{ errors.unit_price }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>总金额（元）</label>
+          <input type="number" name="total_amount" step="0.01" min="0"
+            value="{{ form_data.total_amount if form_data else (sale.total_amount if sale else '') }}"
+            placeholder="留空将按 单价×数量 自动计算">
+          {% if errors.total_amount %}
+          <span class="error-text">{{ errors.total_amount }}</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>销售去向/目的地</label>
+          <input type="text" name="destination" maxlength="200"
+            value="{{ form_data.destination if form_data else (sale.destination if sale else '') }}"
+            placeholder="如：陕西省西安市XX区">
+        </div>
+        <div class="form-group">
+          <label>品质等级</label>
+          <select name="quality_grade">
+            {% set ns2 = namespace(selected=form_data.quality_grade if form_data else (sale.quality_grade if sale else '')) %}
+            <option value="">请选择</option>
+            {% for g in grades %}
+            <option value="{{ g }}" {% if ns2.selected == g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>责任人</label>
+          <input type="text" name="person_in_charge" maxlength="50"
+            value="{{ form_data.person_in_charge if form_data else (sale.person_in_charge if sale else '') }}">
+        </div>
+        <div class="form-group">
+          <label>收款状态</label>
+          <select name="payment_status">
+            {% set ns3 = namespace(selected=form_data.payment_status if form_data else (sale.payment_status if sale else '未收款')) %}
+            {% for p in payment_statuses %}
+            <option value="{{ p }}" {% if ns3.selected == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>备注</label>
+          <textarea name="remarks" maxlength="500"
+            placeholder="销售过程中的其他说明...">{{ form_data.remarks if form_data else (sale.remarks if sale else '') }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">💾 保存</button>
+        <a href="/sales" class="btn btn-outline">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}质量分析 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">📊 质量分析中心</h1>
+  <a href="/" class="btn btn-outline">← 返回首页</a>
+</div>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="card stat-card">
+    <div class="stat-value">{{ total_harvests }}</div>
+    <div class="stat-label">采收总批次</div>
+  </div>
+  {% for grade, count in grade_distribution.items() %}
+  <div class="card stat-card">
+    <div class="stat-value">{{ count }}</div>
+    <div class="stat-label">{{ grade }}批次</div>
+  </div>
+  {% endfor %}
+  <div class="card stat-card" style="border-left: 4px solid var(--warning);">
+    <div class="stat-value">{{ quality_warnings|length }}</div>
+    <div class="stat-label">质量异常预警</div>
+  </div>
+  <div class="card stat-card" style="border-left: 4px solid var(--danger);">
+    <div class="stat-value">{{ inventory_warnings|length }}</div>
+    <div class="stat-label">库存周转预警</div>
+  </div>
+</div>
+
+{% if quality_warnings %}
+<div class="card" style="border-left: 4px solid var(--warning); margin-bottom: 1.5rem;">
+  <div class="card-header" style="padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600;">
+    ⚠️ 质量异常预警（最近30批次）
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>采收日期</th>
+            <th>漆树</th>
+            <th>割口</th>
+            <th>出漆量</th>
+            <th>等级</th>
+            <th>异常问题</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in quality_warnings %}
+          <tr>
+            <td>{{ w.harvest_date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ w.tree_code }}</td>
+            <td>{{ w.incision_code }}</td>
+            <td>{{ '%.2f'|format(w.yield_amount) }} kg</td>
+            <td>{{ w.quality_grade or '-' }}</td>
+            <td>
+              {% for issue in w.issues %}
+                <span class="badge badge-danger" style="margin-right: 0.25rem;">{{ issue }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if inventory_warnings %}
+<div class="card" style="border-left: 4px solid var(--danger); margin-bottom: 1.5rem;">
+  <div class="card-header" style="padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600;">
+    🔔 库存周转预警（入库超过90天）
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>批次编号</th>
+            <th>漆树</th>
+            <th>入库日期</th>
+            <th>在库天数</th>
+            <th>库存数量</th>
+            <th>存放位置</th>
+            <th>责任人</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in inventory_warnings %}
+          <tr>
+            <td><strong>{{ w.batch_no }}</strong></td>
+            <td>{{ w.tree_code }}</td>
+            <td>{{ w.storage_date.strftime('%Y-%m-%d') }}</td>
+            <td><strong style="color: var(--danger);">{{ w.days_in_stock }}天</strong></td>
+            <td>{{ '%.2f'|format(w.stock_quantity) }} kg</td>
+            <td>{{ w.storage_location }}</td>
+            <td>{{ w.person_in_charge }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header" style="padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 1.1rem;">
+    🏆 高等级生漆产出规律
+  </div>
+  <div class="card-body">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌳 按漆树</h4>
+        {% if high_grade_patterns.tree %}
+        <table style="font-size: 0.9rem;">
+          <thead>
+            <tr><th>漆树</th><th>批次</th><th>特级+一级率</th><th>均产</th></tr>
+          </thead>
+          <tbody>
+            {% for p in high_grade_patterns.tree %}
+            <tr>
+              <td><strong>{{ p.key }}</strong></td>
+              <td>{{ p.count }}</td>
+              <td style="color: var(--success);"><strong>{{ '%.1f'|format(p.high_grade_rate) }}%</strong></td>
+              <td>{{ '%.3f'|format(p.avg_yield) }}kg</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">数据不足，暂无可分析的规律</p>
+        {% endif %}
+      </div>
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--primary);">✂️ 按割口</h4>
+        {% if high_grade_patterns.incision %}
+        <table style="font-size: 0.9rem;">
+          <thead>
+            <tr><th>割口</th><th>批次</th><th>特级+一级率</th><th>均产</th></tr>
+          </thead>
+          <tbody>
+            {% for p in high_grade_patterns.incision %}
+            <tr>
+              <td><strong>{{ p.key }}</strong></td>
+              <td>{{ p.count }}</td>
+              <td style="color: var(--success);"><strong>{{ '%.1f'|format(p.high_grade_rate) }}%</strong></td>
+              <td>{{ '%.3f'|format(p.avg_yield) }}kg</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">数据不足，暂无可分析的规律</p>
+        {% endif %}
+      </div>
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌤️ 按天气</h4>
+        {% if high_grade_patterns.weather %}
+        <table style="font-size: 0.9rem;">
+          <thead>
+            <tr><th>天气类型</th><th>批次</th><th>特级+一级率</th><th>均产</th></tr>
+          </thead>
+          <tbody>
+            {% for p in high_grade_patterns.weather %}
+            <tr>
+              <td><strong>{{ p.key }}</strong></td>
+              <td>{{ p.count }}</td>
+              <td style="color: var(--success);"><strong>{{ '%.1f'|format(p.high_grade_rate) }}%</strong></td>
+              <td>{{ '%.3f'|format(p.avg_yield) }}kg</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">数据不足，暂无可分析的规律</p>
+        {% endif %}
+      </div>
+      <div>
+        <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌱 按养护方式</h4>
+        {% if high_grade_patterns.maintenance %}
+        <table style="font-size: 0.9rem;">
+          <thead>
+            <tr><th>养护方式</th><th>批次</th><th>特级+一级率</th><th>均产</th></tr>
+          </thead>
+          <tbody>
+            {% for p in high_grade_patterns.maintenance %}
+            <tr>
+              <td><strong style="font-size: 0.85rem;">{{ p.key }}</strong></td>
+              <td>{{ p.count }}</td>
+              <td style="color: var(--success);"><strong>{{ '%.1f'|format(p.high_grade_rate) }}%</strong></td>
+              <td>{{ '%.3f'|format(p.avg_yield) }}kg</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">数据不足，暂无可分析的规律</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+  <div class="card-header" style="padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 1.1rem;">
+    📈 质量影响因素详细分析
+  </div>
+  <div class="card-body">
+    <div style="margin-bottom: 1.5rem;">
+      <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌳 漆树质量分析</h4>
+      {% if tree_analyses %}
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>漆树编号</th><th>采收批次</th><th>平均产量</th>
+              <th>特级+一级率</th><th>平均杂质</th><th>平均水分</th><th>平均黏度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in tree_analyses %}
+            <tr>
+              <td><strong>{{ a.analysis_key }}</strong></td>
+              <td>{{ a.total_count }}</td>
+              <td>{{ '%.3f'|format(a.avg_yield) }} kg</td>
+              <td style="color: {% if a.high_grade_rate >= 60 %}var(--success){% elif a.high_grade_rate >= 30 %}var(--warning){% else %}var(--danger){% endif %};">
+                <strong>{{ '%.1f'|format(a.high_grade_rate) }}%</strong>
+              </td>
+              <td>{{ '%.2f'|format(a.avg_impurity) }}%</td>
+              <td>{{ '%.2f'|format(a.avg_moisture) }}%</td>
+              <td>{{ '%.1f'|format(a.avg_viscosity) }}s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color: var(--text-secondary);">暂无数据</p>
+      {% endif %}
+    </div>
+
+    <div style="margin-bottom: 1.5rem;">
+      <h4 style="margin-bottom: 0.75rem; color: var(--primary);">✂️ 割口质量分析</h4>
+      {% if incision_analyses %}
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>割口编号</th><th>采收批次</th><th>平均产量</th>
+              <th>特级+一级率</th><th>平均杂质</th><th>平均水分</th><th>平均黏度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in incision_analyses %}
+            <tr>
+              <td><strong>{{ a.analysis_key }}</strong></td>
+              <td>{{ a.total_count }}</td>
+              <td>{{ '%.3f'|format(a.avg_yield) }} kg</td>
+              <td style="color: {% if a.high_grade_rate >= 60 %}var(--success){% elif a.high_grade_rate >= 30 %}var(--warning){% else %}var(--danger){% endif %};">
+                <strong>{{ '%.1f'|format(a.high_grade_rate) }}%</strong>
+              </td>
+              <td>{{ '%.2f'|format(a.avg_impurity) }}%</td>
+              <td>{{ '%.2f'|format(a.avg_moisture) }}%</td>
+              <td>{{ '%.1f'|format(a.avg_viscosity) }}s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color: var(--text-secondary);">暂无数据</p>
+      {% endif %}
+    </div>
+
+    <div style="margin-bottom: 1.5rem;">
+      <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌤️ 天气质量分析</h4>
+      {% if weather_analyses %}
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>天气类型</th><th>采收批次</th><th>平均产量</th>
+              <th>特级+一级率</th><th>平均杂质</th><th>平均水分</th><th>平均黏度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in weather_analyses %}
+            <tr>
+              <td><strong>{{ a.analysis_key }}</strong></td>
+              <td>{{ a.total_count }}</td>
+              <td>{{ '%.3f'|format(a.avg_yield) }} kg</td>
+              <td style="color: {% if a.high_grade_rate >= 60 %}var(--success){% elif a.high_grade_rate >= 30 %}var(--warning){% else %}var(--danger){% endif %};">
+                <strong>{{ '%.1f'|format(a.high_grade_rate) }}%</strong>
+              </td>
+              <td>{{ '%.2f'|format(a.avg_impurity) }}%</td>
+              <td>{{ '%.2f'|format(a.avg_moisture) }}%</td>
+              <td>{{ '%.1f'|format(a.avg_viscosity) }}s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color: var(--text-secondary);">暂无数据</p>
+      {% endif %}
+    </div>
+
+    <div>
+      <h4 style="margin-bottom: 0.75rem; color: var(--primary);">🌱 养护条件质量分析</h4>
+      {% if maintenance_analyses %}
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>养护方式组合</th><th>采收批次</th><th>平均产量</th>
+              <th>特级+一级率</th><th>平均杂质</th><th>平均水分</th><th>平均黏度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in maintenance_analyses %}
+            <tr>
+              <td><strong>{{ a.analysis_key }}</strong></td>
+              <td>{{ a.total_count }}</td>
+              <td>{{ '%.3f'|format(a.avg_yield) }} kg</td>
+              <td style="color: {% if a.high_grade_rate >= 60 %}var(--success){% elif a.high_grade_rate >= 30 %}var(--warning){% else %}var(--danger){% endif %};">
+                <strong>{{ '%.1f'|format(a.high_grade_rate) }}%</strong>
+              </td>
+              <td>{{ '%.2f'|format(a.avg_impurity) }}%</td>
+              <td>{{ '%.2f'|format(a.avg_moisture) }}%</td>
+              <td>{{ '%.1f'|format(a.avg_viscosity) }}s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color: var(--text-secondary);">暂无数据</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

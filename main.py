@@ -206,6 +206,245 @@ def recalculate_all_reminders(db: Session):
     recalculate_maintenance_evaluation(db)
     generate_seasonal_recommendations(db)
     recalculate_seasonal_comparisons(db)
+    recalculate_quality_analysis(db)
+
+
+def recalculate_quality_analysis(db: Session):
+    harvests = db.query(models.HarvestBatch).all()
+    if not harvests:
+        return
+
+    analyses = []
+
+    tree_stats = {}
+    for h in harvests:
+        tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == h.incision.tree_id).first()
+        key = tree.tree_code if tree else "未知"
+        if key not in tree_stats:
+            tree_stats[key] = {"count": 0, "yields": [], "grades": {}, "impurities": [], "moistures": [], "viscosities": []}
+        tree_stats[key]["count"] += 1
+        tree_stats[key]["yields"].append(h.yield_amount)
+        if h.quality_grade:
+            tree_stats[key]["grades"][h.quality_grade] = tree_stats[key]["grades"].get(h.quality_grade, 0) + 1
+        if h.impurity is not None:
+            tree_stats[key]["impurities"].append(h.impurity)
+        if h.moisture is not None:
+            tree_stats[key]["moistures"].append(h.moisture)
+        if h.viscosity is not None:
+            tree_stats[key]["viscosities"].append(h.viscosity)
+
+    for key, stats in tree_stats.items():
+        analyses.append(build_analysis("tree", key, stats))
+
+    incision_stats = {}
+    for h in harvests:
+        key = h.incision.incision_code
+        if key not in incision_stats:
+            incision_stats[key] = {"count": 0, "yields": [], "grades": {}, "impurities": [], "moistures": [], "viscosities": []}
+        incision_stats[key]["count"] += 1
+        incision_stats[key]["yields"].append(h.yield_amount)
+        if h.quality_grade:
+            incision_stats[key]["grades"][h.quality_grade] = incision_stats[key]["grades"].get(h.quality_grade, 0) + 1
+        if h.impurity is not None:
+            incision_stats[key]["impurities"].append(h.impurity)
+        if h.moisture is not None:
+            incision_stats[key]["moistures"].append(h.moisture)
+        if h.viscosity is not None:
+            incision_stats[key]["viscosities"].append(h.viscosity)
+
+    for key, stats in incision_stats.items():
+        analyses.append(build_analysis("incision", key, stats))
+
+    weather_stats = {}
+    for h in harvests:
+        if h.weather:
+            key = h.weather.weather_type or "未知"
+            if key not in weather_stats:
+                weather_stats[key] = {"count": 0, "yields": [], "grades": {}, "impurities": [], "moistures": [], "viscosities": []}
+            weather_stats[key]["count"] += 1
+            weather_stats[key]["yields"].append(h.yield_amount)
+            if h.quality_grade:
+                weather_stats[key]["grades"][h.quality_grade] = weather_stats[key]["grades"].get(h.quality_grade, 0) + 1
+            if h.impurity is not None:
+                weather_stats[key]["impurities"].append(h.impurity)
+            if h.moisture is not None:
+                weather_stats[key]["moistures"].append(h.moisture)
+            if h.viscosity is not None:
+                weather_stats[key]["viscosities"].append(h.viscosity)
+
+    for key, stats in weather_stats.items():
+        analyses.append(build_analysis("weather", key, stats))
+
+    maintenance_stats = {}
+    for h in harvests:
+        tree_id = h.incision.tree_id
+        incision_id = h.incision.id
+        start_date = h.harvest_date - timedelta(days=30)
+        maint_records = db.query(models.MaintenanceRecord).filter(
+            models.MaintenanceRecord.tree_id == tree_id,
+            models.MaintenanceRecord.maintenance_date >= start_date,
+            models.MaintenanceRecord.maintenance_date <= h.harvest_date
+        ).all()
+        maint_types = sorted(list(set(r.project_type for r in maint_records))) if maint_records else ["无养护"]
+        key = "、".join(maint_types)
+        if key not in maintenance_stats:
+            maintenance_stats[key] = {"count": 0, "yields": [], "grades": {}, "impurities": [], "moistures": [], "viscosities": []}
+        maintenance_stats[key]["count"] += 1
+        maintenance_stats[key]["yields"].append(h.yield_amount)
+        if h.quality_grade:
+            maintenance_stats[key]["grades"][h.quality_grade] = maintenance_stats[key]["grades"].get(h.quality_grade, 0) + 1
+        if h.impurity is not None:
+            maintenance_stats[key]["impurities"].append(h.impurity)
+        if h.moisture is not None:
+            maintenance_stats[key]["moistures"].append(h.moisture)
+        if h.viscosity is not None:
+            maintenance_stats[key]["viscosities"].append(h.viscosity)
+
+    for key, stats in maintenance_stats.items():
+        analyses.append(build_analysis("maintenance", key, stats))
+
+    for a_type, a_key, stats in analyses:
+        existing = db.query(models.QualityAnalysis).filter(
+            models.QualityAnalysis.analysis_type == a_type,
+            models.QualityAnalysis.analysis_key == a_key
+        ).first()
+        if existing:
+            existing.total_count = stats["count"]
+            existing.avg_yield = stats["avg_yield"]
+            existing.grade_counts = stats["grade_counts"]
+            existing.high_grade_rate = stats["high_grade_rate"]
+            existing.avg_impurity = stats["avg_impurity"]
+            existing.avg_moisture = stats["avg_moisture"]
+            existing.avg_viscosity = stats["avg_viscosity"]
+            existing.details = stats["details"]
+        else:
+            new_a = models.QualityAnalysis(
+                analysis_type=a_type,
+                analysis_key=a_key,
+                total_count=stats["count"],
+                avg_yield=stats["avg_yield"],
+                grade_counts=stats["grade_counts"],
+                high_grade_rate=stats["high_grade_rate"],
+                avg_impurity=stats["avg_impurity"],
+                avg_moisture=stats["avg_moisture"],
+                avg_viscosity=stats["avg_viscosity"],
+                details=stats["details"]
+            )
+            db.add(new_a)
+
+    db.commit()
+
+
+def build_analysis(a_type: str, key: str, raw_stats: dict) -> tuple:
+    count = raw_stats["count"]
+    avg_yield = round(sum(raw_stats["yields"]) / len(raw_stats["yields"]), 3) if raw_stats["yields"] else 0.0
+    grade_counts = json.dumps(raw_stats["grades"], ensure_ascii=False)
+    high_grade_total = raw_stats["grades"].get("特级", 0) + raw_stats["grades"].get("一级", 0)
+    grade_total = sum(raw_stats["grades"].values())
+    high_grade_rate = round(high_grade_total / grade_total * 100, 2) if grade_total > 0 else 0.0
+    avg_impurity = round(sum(raw_stats["impurities"]) / len(raw_stats["impurities"]), 3) if raw_stats["impurities"] else 0.0
+    avg_moisture = round(sum(raw_stats["moistures"]) / len(raw_stats["moistures"]), 3) if raw_stats["moistures"] else 0.0
+    avg_viscosity = round(sum(raw_stats["viscosities"]) / len(raw_stats["viscosities"]), 3) if raw_stats["viscosities"] else 0.0
+    details = json.dumps({
+        "grade_breakdown": raw_stats["grades"]
+    }, ensure_ascii=False)
+    stats = {
+        "count": count,
+        "avg_yield": avg_yield,
+        "grade_counts": grade_counts,
+        "high_grade_rate": high_grade_rate,
+        "avg_impurity": avg_impurity,
+        "avg_moisture": avg_moisture,
+        "avg_viscosity": avg_viscosity,
+        "details": details
+    }
+    return (a_type, key, stats)
+
+
+def get_quality_warnings(db: Session) -> List[dict]:
+    warnings = []
+    harvests = db.query(models.HarvestBatch).order_by(
+        models.HarvestBatch.harvest_date.desc()
+    ).limit(30).all()
+
+    for h in harvests:
+        issues = []
+        if h.quality_grade in ["三级"]:
+            issues.append(f"等级偏低：{h.quality_grade}")
+        if h.impurity is not None and h.impurity > 3.0:
+            issues.append(f"杂质超标：{h.impurity}%（>3%）")
+        if h.moisture is not None and h.moisture > 25.0:
+            issues.append(f"水分偏高：{h.moisture}%（>25%）")
+        if h.viscosity is not None and h.viscosity < 30:
+            issues.append(f"黏度偏低：{h.viscosity}s（<30s）")
+
+        if issues:
+            tree = db.query(models.LacquerTree).filter(models.LacquerTree.id == h.incision.tree_id).first()
+            warnings.append({
+                "harvest_id": h.id,
+                "tree_code": tree.tree_code if tree else "未知",
+                "incision_code": h.incision.incision_code,
+                "harvest_date": h.harvest_date,
+                "yield_amount": h.yield_amount,
+                "quality_grade": h.quality_grade,
+                "issues": issues
+            })
+
+    return warnings
+
+
+def get_inventory_turnover_warnings(db: Session) -> List[dict]:
+    warnings = []
+    inventories = db.query(models.LacquerInventory).filter(
+        models.LacquerInventory.status == "在库"
+    ).all()
+
+    today = date.today()
+    for inv in inventories:
+        days_in_stock = (today - inv.storage_date).days
+        turnover_rate = 0.0
+        if inv.stock_quantity > 0 and days_in_stock > 0:
+            total_sold = sum(s.sale_quantity for s in inv.sales)
+            avg_daily_sales = total_sold / days_in_stock if days_in_stock > 0 else 0
+            turnover_rate = round(avg_daily_sales / inv.stock_quantity * 100, 2) if inv.stock_quantity > 0 else 0
+
+        if days_in_stock > 90:
+            tree = db.query(models.LacquerTree).filter(
+                models.LacquerTree.id == inv.harvest.incision.tree_id
+            ).first() if inv.harvest else None
+            warnings.append({
+                "inventory_id": inv.id,
+                "batch_no": inv.batch_no,
+                "tree_code": tree.tree_code if tree else "未知",
+                "storage_date": inv.storage_date,
+                "stock_quantity": round(inv.stock_quantity, 2),
+                "days_in_stock": days_in_stock,
+                "turnover_rate": turnover_rate,
+                "storage_location": inv.storage_location or "未指定",
+                "person_in_charge": inv.person_in_charge or "未指定"
+            })
+
+    warnings.sort(key=lambda x: x["days_in_stock"], reverse=True)
+    return warnings[:10]
+
+
+def get_high_grade_patterns(db: Session) -> dict:
+    patterns = {}
+    for a_type in ["tree", "incision", "weather", "maintenance"]:
+        analyses = db.query(models.QualityAnalysis).filter(
+            models.QualityAnalysis.analysis_type == a_type
+        ).order_by(models.QualityAnalysis.high_grade_rate.desc()).limit(5).all()
+        patterns[a_type] = [{
+            "key": a.analysis_key,
+            "count": a.total_count,
+            "high_grade_rate": a.high_grade_rate,
+            "avg_yield": a.avg_yield,
+            "avg_impurity": a.avg_impurity,
+            "avg_moisture": a.avg_moisture,
+            "avg_viscosity": a.avg_viscosity
+        } for a in analyses if a.total_count >= 2]
+
+    return patterns
 
 
 def get_season(dt: date) -> str:
@@ -1042,6 +1281,9 @@ async def index(request: Request, db: Session = Depends(get_db)):
     seasonal_suggestions = get_seasonal_suggestions(db)
     inefficient_warnings = get_inefficient_warnings(db)
     
+    quality_warnings = get_quality_warnings(db)
+    inventory_turnover_warnings = get_inventory_turnover_warnings(db)
+    
     current_season = get_season(date.today())
     season_emoji = {"春季": "🌸", "夏季": "☀️", "秋季": "🍂", "冬季": "❄️"}.get(current_season, "🌿")
     
@@ -1063,7 +1305,9 @@ async def index(request: Request, db: Session = Depends(get_db)):
         "seasonal_suggestions": seasonal_suggestions,
         "inefficient_warnings": inefficient_warnings[:10],
         "current_season": current_season,
-        "season_emoji": season_emoji
+        "season_emoji": season_emoji,
+        "quality_warnings": quality_warnings[:10],
+        "inventory_turnover_warnings": inventory_turnover_warnings[:10]
     })
 
 
@@ -1331,6 +1575,7 @@ async def new_harvest_form(request: Request, plan_id: Optional[int] = None, db: 
     incisions = db.query(models.Incision).filter(models.Incision.status == "活跃").all()
     weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
     grades = ["特级", "一级", "二级", "三级"]
+    colors = ["乳白色", "浅褐色", "深褐色", "棕黑色", "其他"]
     today = date.today().strftime("%Y-%m-%d")
     plan = None
     form_data = None
@@ -1345,8 +1590,8 @@ async def new_harvest_form(request: Request, plan_id: Optional[int] = None, db: 
             }
     return templates.TemplateResponse("harvests/form.html", {
         "request": request, "harvest": None, "incisions": incisions,
-        "weathers": weathers, "grades": grades, "errors": {}, "today": today,
-        "form_data": form_data, "plan_id": plan_id
+        "weathers": weathers, "grades": grades, "colors": colors,
+        "errors": {}, "today": today, "form_data": form_data, "plan_id": plan_id
     })
 
 
@@ -1357,6 +1602,10 @@ async def create_harvest(
     incision_id: int = Form(...),
     harvest_date: str = Form(...),
     yield_amount: float = Form(...),
+    color: Optional[str] = Form(None),
+    impurity: Optional[float] = Form(None),
+    moisture: Optional[float] = Form(None),
+    viscosity: Optional[float] = Form(None),
     quality_grade: Optional[str] = Form(None),
     weather_id: Optional[int] = Form(None),
     operator: Optional[str] = Form(None),
@@ -1372,6 +1621,12 @@ async def create_harvest(
         errors["harvest_date"] = "日期格式不正确"
     if yield_amount < 0:
         errors["yield_amount"] = "出漆量不能为负数"
+    if impurity is not None and impurity < 0:
+        errors["impurity"] = "杂质含量不能为负数"
+    if moisture is not None and moisture < 0:
+        errors["moisture"] = "水分含量不能为负数"
+    if viscosity is not None and viscosity < 0:
+        errors["viscosity"] = "黏度不能为负数"
     if "harvest_date" not in errors:
         ok, msg = check_recovery_period(db, incision_id, h_date)
         if not ok:
@@ -1380,19 +1635,23 @@ async def create_harvest(
         incisions = db.query(models.Incision).filter(models.Incision.status == "活跃").all()
         weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
         grades = ["特级", "一级", "二级", "三级"]
+        colors = ["乳白色", "浅褐色", "深褐色", "棕黑色", "其他"]
         return templates.TemplateResponse("harvests/form.html", {
             "request": request, "harvest": None, "incisions": incisions,
-            "weathers": weathers, "grades": grades, "errors": errors,
+            "weathers": weathers, "grades": grades, "colors": colors, "errors": errors,
             "today": date.today().strftime("%Y-%m-%d"),
             "form_data": {
                 "incision_id": incision_id, "harvest_date": harvest_date,
-                "yield_amount": yield_amount, "quality_grade": quality_grade,
-                "weather_id": weather_id, "operator": operator, "remarks": remarks
+                "yield_amount": yield_amount, "color": color,
+                "impurity": impurity, "moisture": moisture, "viscosity": viscosity,
+                "quality_grade": quality_grade, "weather_id": weather_id,
+                "operator": operator, "remarks": remarks
             },
             "plan_id": plan_id
         })
     harvest = models.HarvestBatch(
         incision_id=incision_id, harvest_date=h_date, yield_amount=yield_amount,
+        color=color, impurity=impurity, moisture=moisture, viscosity=viscosity,
         quality_grade=quality_grade, weather_id=weather_id,
         operator=operator, remarks=remarks
     )
@@ -1406,6 +1665,7 @@ async def create_harvest(
     db.commit()
     recalculate_incision_stats(db, incision_id)
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/harvests", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -1417,9 +1677,10 @@ async def edit_harvest_form(request: Request, harvest_id: int, db: Session = Dep
     incisions = db.query(models.Incision).all()
     weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
     grades = ["特级", "一级", "二级", "三级"]
+    colors = ["乳白色", "浅褐色", "深褐色", "棕黑色", "其他"]
     return templates.TemplateResponse("harvests/form.html", {
         "request": request, "harvest": harvest, "incisions": incisions,
-        "weathers": weathers, "grades": grades, "errors": {},
+        "weathers": weathers, "grades": grades, "colors": colors, "errors": {},
         "today": date.today().strftime("%Y-%m-%d")
     })
 
@@ -1432,6 +1693,10 @@ async def update_harvest(
     incision_id: int = Form(...),
     harvest_date: str = Form(...),
     yield_amount: float = Form(...),
+    color: Optional[str] = Form(None),
+    impurity: Optional[float] = Form(None),
+    moisture: Optional[float] = Form(None),
+    viscosity: Optional[float] = Form(None),
     quality_grade: Optional[str] = Form(None),
     weather_id: Optional[int] = Form(None),
     operator: Optional[str] = Form(None),
@@ -1449,6 +1714,12 @@ async def update_harvest(
         errors["harvest_date"] = "日期格式不正确"
     if yield_amount < 0:
         errors["yield_amount"] = "出漆量不能为负数"
+    if impurity is not None and impurity < 0:
+        errors["impurity"] = "杂质含量不能为负数"
+    if moisture is not None and moisture < 0:
+        errors["moisture"] = "水分含量不能为负数"
+    if viscosity is not None and viscosity < 0:
+        errors["viscosity"] = "黏度不能为负数"
     old_incision_id = harvest.incision_id
     if "harvest_date" not in errors and not errors.get("recovery"):
         target_incision_id = incision_id if incision_id else old_incision_id
@@ -1466,14 +1737,19 @@ async def update_harvest(
         incisions = db.query(models.Incision).all()
         weathers = db.query(models.WeatherCondition).order_by(models.WeatherCondition.record_date.desc()).all()
         grades = ["特级", "一级", "二级", "三级"]
+        colors = ["乳白色", "浅褐色", "深褐色", "棕黑色", "其他"]
         return templates.TemplateResponse("harvests/form.html", {
             "request": request, "harvest": harvest, "incisions": incisions,
-            "weathers": weathers, "grades": grades, "errors": errors,
+            "weathers": weathers, "grades": grades, "colors": colors, "errors": errors,
             "today": date.today().strftime("%Y-%m-%d")
         })
     harvest.incision_id = incision_id
     harvest.harvest_date = h_date
     harvest.yield_amount = yield_amount
+    harvest.color = color
+    harvest.impurity = impurity
+    harvest.moisture = moisture
+    harvest.viscosity = viscosity
     harvest.quality_grade = quality_grade
     harvest.weather_id = weather_id
     harvest.operator = operator
@@ -1483,6 +1759,7 @@ async def update_harvest(
     if old_incision_id != incision_id:
         recalculate_incision_stats(db, incision_id)
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/harvests", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -1496,6 +1773,7 @@ async def delete_harvest(harvest_id: int, db: Session = Depends(get_db)):
     db.commit()
     recalculate_incision_stats(db, incision_id)
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/harvests", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -1600,6 +1878,7 @@ async def update_weather(
     weather.wind_speed = wind_speed
     weather.remarks = remarks
     db.commit()
+    recalculate_quality_analysis(db)
     return RedirectResponse("/weather", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -1610,6 +1889,7 @@ async def delete_weather(weather_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="天气记录不存在")
     db.delete(weather)
     db.commit()
+    recalculate_quality_analysis(db)
     return RedirectResponse("/weather", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -2284,6 +2564,7 @@ async def create_maintenance(
     db.add(record)
     db.commit()
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/maintenance", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -2387,6 +2668,7 @@ async def update_maintenance(
     record.remarks = remarks
     db.commit()
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/maintenance", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -2398,6 +2680,7 @@ async def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
     db.delete(record)
     db.commit()
     recalculate_all_reminders(db)
+    recalculate_quality_analysis(db)
     return RedirectResponse("/maintenance", status_code=http_status.HTTP_303_SEE_OTHER)
 
 
@@ -2924,6 +3207,584 @@ async def recalculate_evaluation_api(db: Session = Depends(get_db)):
         recalculate_maintenance_evaluation(db)
         generate_seasonal_recommendations(db)
         recalculate_seasonal_comparisons(db)
+        recalculate_quality_analysis(db)
         return JSONResponse({"status": "success", "message": "养护评估和推荐策略已重新计算完成"})
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.get("/inventory", response_class=HTMLResponse)
+async def list_inventory(
+    request: Request,
+    db: Session = Depends(get_db),
+    status: Optional[str] = None
+):
+    query = db.query(models.LacquerInventory)
+    if status:
+        query = query.filter(models.LacquerInventory.status == status)
+    inventories = query.order_by(models.LacquerInventory.storage_date.desc()).all()
+
+    total_stock = sum(inv.stock_quantity for inv in inventories)
+    total_value = 0.0
+    for inv in inventories:
+        sold_qty = sum(s.sale_quantity for s in inv.sales)
+        avg_price = sum(s.total_amount for s in inv.sales) / sold_qty if sold_qty > 0 else 0
+        total_value += inv.stock_quantity * avg_price
+
+    status_counts = {}
+    all_inv = db.query(models.LacquerInventory).all()
+    for inv in all_inv:
+        s = inv.status or "未知"
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    return templates.TemplateResponse("inventory/list.html", {
+        "request": request,
+        "inventories": inventories,
+        "stats": {
+            "total_count": len(inventories),
+            "total_stock": round(total_stock, 2),
+            "total_value": round(total_value, 2),
+            "status_counts": status_counts
+        },
+        "filter_status": status
+    })
+
+
+@app.get("/inventory/new", response_class=HTMLResponse)
+async def new_inventory_form(
+    request: Request,
+    harvest_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    used_harvest_ids = [inv.harvest_id for inv in db.query(models.LacquerInventory).all()]
+    harvests = db.query(models.HarvestBatch).filter(
+        ~models.HarvestBatch.id.in_(used_harvest_ids)
+    ).order_by(models.HarvestBatch.harvest_date.desc()).all()
+
+    preselected = None
+    if harvest_id:
+        preselected = db.query(models.HarvestBatch).filter(models.HarvestBatch.id == harvest_id).first()
+
+    today = date.today().strftime("%Y-%m-%d")
+    statuses = ["在库", "部分出库", "已售罄", "已过期"]
+
+    return templates.TemplateResponse("inventory/form.html", {
+        "request": request,
+        "inventory": None,
+        "harvests": harvests,
+        "statuses": statuses,
+        "errors": {},
+        "today": today,
+        "preselected": preselected
+    })
+
+
+@app.post("/inventory/new")
+async def create_inventory(
+    request: Request,
+    db: Session = Depends(get_db),
+    harvest_id: int = Form(...),
+    batch_no: str = Form(...),
+    storage_location: Optional[str] = Form(None),
+    storage_date: str = Form(...),
+    stock_quantity: Optional[float] = Form(0.0),
+    person_in_charge: Optional[str] = Form(None),
+    status: Optional[str] = Form("在库"),
+    remarks: Optional[str] = Form(None)
+):
+    errors = {}
+    try:
+        s_date = datetime.strptime(storage_date, "%Y-%m-%d").date()
+    except ValueError:
+        errors["storage_date"] = "日期格式不正确"
+
+    existing = db.query(models.LacquerInventory).filter(models.LacquerInventory.batch_no == batch_no).first()
+    if existing:
+        errors["batch_no"] = "批次编号已存在"
+
+    existing_harvest = db.query(models.LacquerInventory).filter(models.LacquerInventory.harvest_id == harvest_id).first()
+    if existing_harvest:
+        errors["harvest_id"] = "该采收批次已入库"
+
+    if stock_quantity is not None and stock_quantity < 0:
+        errors["stock_quantity"] = "库存数量不能为负数"
+
+    if errors:
+        used_harvest_ids = [inv.harvest_id for inv in db.query(models.LacquerInventory).all()]
+        harvests = db.query(models.HarvestBatch).filter(
+            ~models.HarvestBatch.id.in_(used_harvest_ids)
+        ).order_by(models.HarvestBatch.harvest_date.desc()).all()
+        statuses = ["在库", "部分出库", "已售罄", "已过期"]
+        return templates.TemplateResponse("inventory/form.html", {
+            "request": request,
+            "inventory": None,
+            "harvests": harvests,
+            "statuses": statuses,
+            "errors": errors,
+            "today": date.today().strftime("%Y-%m-%d"),
+            "form_data": {
+                "harvest_id": harvest_id, "batch_no": batch_no,
+                "storage_location": storage_location, "storage_date": storage_date,
+                "stock_quantity": stock_quantity, "person_in_charge": person_in_charge,
+                "status": status, "remarks": remarks
+            }
+        })
+
+    inventory = models.LacquerInventory(
+        harvest_id=harvest_id, batch_no=batch_no, storage_location=storage_location,
+        storage_date=s_date, stock_quantity=stock_quantity or 0.0,
+        person_in_charge=person_in_charge, status=status, remarks=remarks
+    )
+    db.add(inventory)
+    db.commit()
+    return RedirectResponse("/inventory", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/inventory/{inv_id}/edit", response_class=HTMLResponse)
+async def edit_inventory_form(request: Request, inv_id: int, db: Session = Depends(get_db)):
+    inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inv_id).first()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="库存记录不存在")
+    harvests = db.query(models.HarvestBatch).order_by(models.HarvestBatch.harvest_date.desc()).all()
+    statuses = ["在库", "部分出库", "已售罄", "已过期"]
+    return templates.TemplateResponse("inventory/form.html", {
+        "request": request, "inventory": inventory, "harvests": harvests,
+        "statuses": statuses, "errors": {},
+        "today": date.today().strftime("%Y-%m-%d")
+    })
+
+
+@app.post("/inventory/{inv_id}/edit")
+async def update_inventory(
+    request: Request,
+    inv_id: int,
+    db: Session = Depends(get_db),
+    harvest_id: int = Form(...),
+    batch_no: str = Form(...),
+    storage_location: Optional[str] = Form(None),
+    storage_date: str = Form(...),
+    stock_quantity: Optional[float] = Form(0.0),
+    person_in_charge: Optional[str] = Form(None),
+    status: Optional[str] = Form("在库"),
+    remarks: Optional[str] = Form(None)
+):
+    inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inv_id).first()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="库存记录不存在")
+    errors = {}
+    try:
+        s_date = datetime.strptime(storage_date, "%Y-%m-%d").date()
+    except ValueError:
+        errors["storage_date"] = "日期格式不正确"
+
+    existing = db.query(models.LacquerInventory).filter(
+        models.LacquerInventory.batch_no == batch_no, models.LacquerInventory.id != inv_id
+    ).first()
+    if existing:
+        errors["batch_no"] = "批次编号已存在"
+
+    existing_harvest = db.query(models.LacquerInventory).filter(
+        models.LacquerInventory.harvest_id == harvest_id, models.LacquerInventory.id != inv_id
+    ).first()
+    if existing_harvest:
+        errors["harvest_id"] = "该采收批次已入库"
+
+    if stock_quantity is not None and stock_quantity < 0:
+        errors["stock_quantity"] = "库存数量不能为负数"
+
+    if errors:
+        harvests = db.query(models.HarvestBatch).order_by(models.HarvestBatch.harvest_date.desc()).all()
+        statuses = ["在库", "部分出库", "已售罄", "已过期"]
+        return templates.TemplateResponse("inventory/form.html", {
+            "request": request, "inventory": inventory, "harvests": harvests,
+            "statuses": statuses, "errors": errors,
+            "today": date.today().strftime("%Y-%m-%d")
+        })
+
+    inventory.harvest_id = harvest_id
+    inventory.batch_no = batch_no
+    inventory.storage_location = storage_location
+    inventory.storage_date = s_date
+    inventory.stock_quantity = stock_quantity or 0.0
+    inventory.person_in_charge = person_in_charge
+    inventory.status = status
+    inventory.remarks = remarks
+    db.commit()
+    return RedirectResponse("/inventory", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/inventory/{inv_id}/delete")
+async def delete_inventory(inv_id: int, db: Session = Depends(get_db)):
+    inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inv_id).first()
+    if not inventory:
+        raise HTTPException(status_code=404, detail="库存记录不存在")
+    db.delete(inventory)
+    db.commit()
+    return RedirectResponse("/inventory", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/sales", response_class=HTMLResponse)
+async def list_sales(
+    request: Request,
+    db: Session = Depends(get_db),
+    payment_status: Optional[str] = None
+):
+    query = db.query(models.LacquerSale)
+    if payment_status:
+        query = query.filter(models.LacquerSale.payment_status == payment_status)
+    sales = query.order_by(models.LacquerSale.sale_date.desc()).all()
+
+    total_qty = sum(s.sale_quantity for s in sales)
+    total_amount = sum(s.total_amount for s in sales)
+    unpaid_amount = sum(s.total_amount for s in sales if s.payment_status == "未收款")
+
+    return templates.TemplateResponse("sales/list.html", {
+        "request": request,
+        "sales": sales,
+        "stats": {
+            "total_count": len(sales),
+            "total_qty": round(total_qty, 2),
+            "total_amount": round(total_amount, 2),
+            "unpaid_amount": round(unpaid_amount, 2)
+        },
+        "filter_payment": payment_status
+    })
+
+
+@app.get("/sales/new", response_class=HTMLResponse)
+async def new_sale_form(
+    request: Request,
+    inventory_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    inventories = db.query(models.LacquerInventory).filter(
+        models.LacquerInventory.stock_quantity > 0
+    ).order_by(models.LacquerInventory.storage_date.desc()).all()
+    today = date.today().strftime("%Y-%m-%d")
+    payment_statuses = ["未收款", "部分收款", "已收款"]
+    grades = ["特级", "一级", "二级", "三级"]
+
+    preselected = None
+    if inventory_id:
+        preselected = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inventory_id).first()
+
+    return templates.TemplateResponse("sales/form.html", {
+        "request": request,
+        "sale": None,
+        "inventories": inventories,
+        "payment_statuses": payment_statuses,
+        "grades": grades,
+        "errors": {},
+        "today": today,
+        "preselected": preselected
+    })
+
+
+@app.post("/sales/new")
+async def create_sale(
+    request: Request,
+    db: Session = Depends(get_db),
+    inventory_id: int = Form(...),
+    sale_date: str = Form(...),
+    customer: Optional[str] = Form(None),
+    sale_quantity: float = Form(...),
+    unit_price: Optional[float] = Form(0.0),
+    total_amount: Optional[float] = Form(0.0),
+    destination: Optional[str] = Form(None),
+    quality_grade: Optional[str] = Form(None),
+    person_in_charge: Optional[str] = Form(None),
+    payment_status: Optional[str] = Form("未收款"),
+    remarks: Optional[str] = Form(None)
+):
+    errors = {}
+    try:
+        s_date = datetime.strptime(sale_date, "%Y-%m-%d").date()
+    except ValueError:
+        errors["sale_date"] = "日期格式不正确"
+
+    if sale_quantity <= 0:
+        errors["sale_quantity"] = "销售数量必须大于0"
+
+    inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inventory_id).first()
+    if inventory and sale_quantity > inventory.stock_quantity:
+        errors["sale_quantity"] = f"库存不足，当前库存：{inventory.stock_quantity}kg"
+
+    if unit_price is not None and unit_price < 0:
+        errors["unit_price"] = "单价不能为负数"
+    if total_amount is not None and total_amount < 0:
+        errors["total_amount"] = "总金额不能为负数"
+
+    if errors:
+        inventories = db.query(models.LacquerInventory).filter(
+            models.LacquerInventory.stock_quantity > 0
+        ).order_by(models.LacquerInventory.storage_date.desc()).all()
+        payment_statuses = ["未收款", "部分收款", "已收款"]
+        grades = ["特级", "一级", "二级", "三级"]
+        return templates.TemplateResponse("sales/form.html", {
+            "request": request,
+            "sale": None,
+            "inventories": inventories,
+            "payment_statuses": payment_statuses,
+            "grades": grades,
+            "errors": errors,
+            "today": date.today().strftime("%Y-%m-%d"),
+            "form_data": {
+                "inventory_id": inventory_id, "sale_date": sale_date,
+                "customer": customer, "sale_quantity": sale_quantity,
+                "unit_price": unit_price, "total_amount": total_amount,
+                "destination": destination, "quality_grade": quality_grade,
+                "person_in_charge": person_in_charge,
+                "payment_status": payment_status, "remarks": remarks
+            }
+        })
+
+    calc_total = round((unit_price or 0.0) * sale_quantity, 2) if not total_amount else (total_amount or 0.0)
+
+    sale = models.LacquerSale(
+        inventory_id=inventory_id, sale_date=s_date, customer=customer,
+        sale_quantity=sale_quantity, unit_price=unit_price or 0.0,
+        total_amount=calc_total, destination=destination,
+        quality_grade=quality_grade, person_in_charge=person_in_charge,
+        payment_status=payment_status, remarks=remarks
+    )
+    db.add(sale)
+
+    if inventory:
+        inventory.stock_quantity = round(inventory.stock_quantity - sale_quantity, 3)
+        if inventory.stock_quantity <= 0:
+            inventory.status = "已售罄"
+            inventory.stock_quantity = 0.0
+        elif inventory.stock_quantity < (db.query(func.sum(models.HarvestBatch.yield_amount)).filter(
+            models.HarvestBatch.id == inventory.harvest_id
+        ).scalar() or 0):
+            inventory.status = "部分出库"
+
+    db.commit()
+    return RedirectResponse("/sales", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/sales/{sale_id}/edit", response_class=HTMLResponse)
+async def edit_sale_form(request: Request, sale_id: int, db: Session = Depends(get_db)):
+    sale = db.query(models.LacquerSale).filter(models.LacquerSale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="销售记录不存在")
+    inventories = db.query(models.LacquerInventory).order_by(models.LacquerInventory.storage_date.desc()).all()
+    payment_statuses = ["未收款", "部分收款", "已收款"]
+    grades = ["特级", "一级", "二级", "三级"]
+    return templates.TemplateResponse("sales/form.html", {
+        "request": request, "sale": sale, "inventories": inventories,
+        "payment_statuses": payment_statuses, "grades": grades,
+        "errors": {}, "today": date.today().strftime("%Y-%m-%d")
+    })
+
+
+@app.post("/sales/{sale_id}/edit")
+async def update_sale(
+    request: Request,
+    sale_id: int,
+    db: Session = Depends(get_db),
+    inventory_id: int = Form(...),
+    sale_date: str = Form(...),
+    customer: Optional[str] = Form(None),
+    sale_quantity: float = Form(...),
+    unit_price: Optional[float] = Form(0.0),
+    total_amount: Optional[float] = Form(0.0),
+    destination: Optional[str] = Form(None),
+    quality_grade: Optional[str] = Form(None),
+    person_in_charge: Optional[str] = Form(None),
+    payment_status: Optional[str] = Form("未收款"),
+    remarks: Optional[str] = Form(None)
+):
+    sale = db.query(models.LacquerSale).filter(models.LacquerSale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="销售记录不存在")
+    errors = {}
+    try:
+        s_date = datetime.strptime(sale_date, "%Y-%m-%d").date()
+    except ValueError:
+        errors["sale_date"] = "日期格式不正确"
+
+    if sale_quantity <= 0:
+        errors["sale_quantity"] = "销售数量必须大于0"
+
+    old_inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == sale.inventory_id).first()
+    new_inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == inventory_id).first()
+
+    if old_inventory and old_inventory.id == inventory_id:
+        available = old_inventory.stock_quantity + sale.sale_quantity
+        if sale_quantity > available:
+            errors["sale_quantity"] = f"库存不足，可用：{available}kg"
+    elif new_inventory and sale_quantity > new_inventory.stock_quantity:
+        errors["sale_quantity"] = f"库存不足，当前库存：{new_inventory.stock_quantity}kg"
+
+    if unit_price is not None and unit_price < 0:
+        errors["unit_price"] = "单价不能为负数"
+    if total_amount is not None and total_amount < 0:
+        errors["total_amount"] = "总金额不能为负数"
+
+    if errors:
+        inventories = db.query(models.LacquerInventory).order_by(models.LacquerInventory.storage_date.desc()).all()
+        payment_statuses = ["未收款", "部分收款", "已收款"]
+        grades = ["特级", "一级", "二级", "三级"]
+        return templates.TemplateResponse("sales/form.html", {
+            "request": request, "sale": sale, "inventories": inventories,
+            "payment_statuses": payment_statuses, "grades": grades,
+            "errors": {}, "today": date.today().strftime("%Y-%m-%d")
+        })
+
+    if old_inventory and old_inventory.id != inventory_id:
+        old_inventory.stock_quantity = round(old_inventory.stock_quantity + sale.sale_quantity, 3)
+        original_yield = db.query(func.sum(models.HarvestBatch.yield_amount)).filter(
+            models.HarvestBatch.id == old_inventory.harvest_id
+        ).scalar() or 0
+        if old_inventory.stock_quantity >= original_yield:
+            old_inventory.status = "在库"
+        elif old_inventory.stock_quantity > 0:
+            old_inventory.status = "部分出库"
+        else:
+            old_inventory.status = "已售罄"
+
+    if new_inventory and new_inventory.id == inventory_id:
+        if old_inventory and old_inventory.id == inventory_id:
+            new_inventory.stock_quantity = round(new_inventory.stock_quantity + sale.sale_quantity - sale_quantity, 3)
+        else:
+            new_inventory.stock_quantity = round(new_inventory.stock_quantity - sale_quantity, 3)
+        original_yield = db.query(func.sum(models.HarvestBatch.yield_amount)).filter(
+            models.HarvestBatch.id == new_inventory.harvest_id
+        ).scalar() or 0
+        if new_inventory.stock_quantity <= 0:
+            new_inventory.status = "已售罄"
+            new_inventory.stock_quantity = 0.0
+        elif new_inventory.stock_quantity >= original_yield:
+            new_inventory.status = "在库"
+        else:
+            new_inventory.status = "部分出库"
+
+    calc_total = round((unit_price or 0.0) * sale_quantity, 2) if not total_amount else (total_amount or 0.0)
+
+    sale.inventory_id = inventory_id
+    sale.sale_date = s_date
+    sale.customer = customer
+    sale.sale_quantity = sale_quantity
+    sale.unit_price = unit_price or 0.0
+    sale.total_amount = calc_total
+    sale.destination = destination
+    sale.quality_grade = quality_grade
+    sale.person_in_charge = person_in_charge
+    sale.payment_status = payment_status
+    sale.remarks = remarks
+    db.commit()
+    return RedirectResponse("/sales", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/sales/{sale_id}/delete")
+async def delete_sale(sale_id: int, db: Session = Depends(get_db)):
+    sale = db.query(models.LacquerSale).filter(models.LacquerSale.id == sale_id).first()
+    if not sale:
+        raise HTTPException(status_code=404, detail="销售记录不存在")
+
+    inventory = db.query(models.LacquerInventory).filter(models.LacquerInventory.id == sale.inventory_id).first()
+    if inventory:
+        inventory.stock_quantity = round(inventory.stock_quantity + sale.sale_quantity, 3)
+        original_yield = db.query(func.sum(models.HarvestBatch.yield_amount)).filter(
+            models.HarvestBatch.id == inventory.harvest_id
+        ).scalar() or 0
+        if inventory.stock_quantity >= original_yield:
+            inventory.status = "在库"
+        elif inventory.stock_quantity > 0:
+            inventory.status = "部分出库"
+        else:
+            inventory.status = "已售罄"
+
+    db.delete(sale)
+    db.commit()
+    return RedirectResponse("/sales", status_code=http_status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/quality-analysis", response_class=HTMLResponse)
+async def quality_analysis_page(request: Request, db: Session = Depends(get_db)):
+    recalculate_quality_analysis(db)
+
+    tree_analyses = db.query(models.QualityAnalysis).filter(
+        models.QualityAnalysis.analysis_type == "tree"
+    ).order_by(models.QualityAnalysis.high_grade_rate.desc()).all()
+
+    incision_analyses = db.query(models.QualityAnalysis).filter(
+        models.QualityAnalysis.analysis_type == "incision"
+    ).order_by(models.QualityAnalysis.high_grade_rate.desc()).all()
+
+    weather_analyses = db.query(models.QualityAnalysis).filter(
+        models.QualityAnalysis.analysis_type == "weather"
+    ).order_by(models.QualityAnalysis.high_grade_rate.desc()).all()
+
+    maintenance_analyses = db.query(models.QualityAnalysis).filter(
+        models.QualityAnalysis.analysis_type == "maintenance"
+    ).order_by(models.QualityAnalysis.high_grade_rate.desc()).all()
+
+    quality_warnings = get_quality_warnings(db)
+    inventory_warnings = get_inventory_turnover_warnings(db)
+    high_grade_patterns = get_high_grade_patterns(db)
+
+    all_harvests = db.query(models.HarvestBatch).all()
+    grade_distribution = {}
+    for h in all_harvests:
+        if h.quality_grade:
+            grade_distribution[h.quality_grade] = grade_distribution.get(h.quality_grade, 0) + 1
+
+    return templates.TemplateResponse("quality_analysis.html", {
+        "request": request,
+        "tree_analyses": tree_analyses,
+        "incision_analyses": incision_analyses,
+        "weather_analyses": weather_analyses,
+        "maintenance_analyses": maintenance_analyses,
+        "quality_warnings": quality_warnings,
+        "inventory_warnings": inventory_warnings,
+        "high_grade_patterns": high_grade_patterns,
+        "grade_distribution": grade_distribution,
+        "total_harvests": len(all_harvests)
+    })
+
+
+@app.get("/api/quality-analysis")
+async def get_quality_analysis_api(
+    analysis_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.QualityAnalysis)
+    if analysis_type:
+        query = query.filter(models.QualityAnalysis.analysis_type == analysis_type)
+    analyses = query.order_by(models.QualityAnalysis.high_grade_rate.desc()).all()
+    result = []
+    for a in analyses:
+        grade_counts = json.loads(a.grade_counts) if a.grade_counts else {}
+        result.append({
+            "id": a.id,
+            "analysis_type": a.analysis_type,
+            "analysis_key": a.analysis_key,
+            "total_count": a.total_count,
+            "avg_yield": a.avg_yield,
+            "grade_counts": grade_counts,
+            "high_grade_rate": a.high_grade_rate,
+            "avg_impurity": a.avg_impurity,
+            "avg_moisture": a.avg_moisture,
+            "avg_viscosity": a.avg_viscosity
+        })
+    return JSONResponse({"analyses": result})
+
+
+@app.get("/api/quality-warnings")
+async def get_quality_warnings_api(db: Session = Depends(get_db)):
+    warnings = get_quality_warnings(db)
+    return JSONResponse({"warnings": warnings})
+
+
+@app.get("/api/inventory-turnover-warnings")
+async def get_inventory_turnover_warnings_api(db: Session = Depends(get_db)):
+    warnings = get_inventory_turnover_warnings(db)
+    return JSONResponse({"warnings": warnings})
+
+
+@app.get("/api/high-grade-patterns")
+async def get_high_grade_patterns_api(db: Session = Depends(get_db)):
+    patterns = get_high_grade_patterns(db)
+    return JSONResponse(patterns)

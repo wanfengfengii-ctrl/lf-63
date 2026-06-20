@@ -39,6 +39,8 @@
       {% if plan_id %}
       <input type="hidden" name="plan_id" value="{{ plan_id }}">
       {% endif %}
+
+      <h3 style="margin-bottom: 1rem; color: var(--primary);">📝 基本信息</h3>
       <div class="form-grid">
         <div class="form-group">
           <label>割口 <span class="required">*</span></label>
@@ -73,14 +75,9 @@
           {% endif %}
         </div>
         <div class="form-group">
-          <label>品质等级</label>
-          <select name="quality_grade">
-            {% set ns2 = namespace(selected=form_data.quality_grade if form_data else (harvest.quality_grade if harvest else '')) %}
-            <option value="">请选择</option>
-            {% for g in grades %}
-            <option value="{{ g }}" {% if ns2.selected == g %}selected{% endif %}>{{ g }}</option>
-            {% endfor %}
-          </select>
+          <label>操作员</label>
+          <input type="text" name="operator" maxlength="50"
+            value="{{ form_data.operator if form_data else (harvest.operator if harvest else '') }}">
         </div>
         <div class="form-group">
           <label>天气条件</label>
@@ -94,11 +91,63 @@
             {% endfor %}
           </select>
         </div>
+      </div>
+
+      <h3 style="margin: 1.5rem 0 1rem; color: var(--primary);">🧪 质量检测</h3>
+      <div class="form-grid">
         <div class="form-group">
-          <label>操作员</label>
-          <input type="text" name="operator" maxlength="50"
-            value="{{ form_data.operator if form_data else (harvest.operator if harvest else '') }}">
+          <label>生漆颜色</label>
+          <select name="color">
+            {% set ns4 = namespace(selected=form_data.color if form_data else (harvest.color if harvest else '')) %}
+            <option value="">请选择</option>
+            {% for c in colors %}
+            <option value="{{ c }}" {% if ns4.selected == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
         </div>
+        <div class="form-group">
+          <label>品质等级</label>
+          <select name="quality_grade">
+            {% set ns2 = namespace(selected=form_data.quality_grade if form_data else (harvest.quality_grade if harvest else '')) %}
+            <option value="">请选择</option>
+            {% for g in grades %}
+            <option value="{{ g }}" {% if ns2.selected == g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>杂质含量（%）</label>
+          <input type="number" name="impurity" step="0.01" min="0" max="100"
+            value="{{ form_data.impurity if form_data else (harvest.impurity if harvest else '') }}"
+            placeholder="如：1.5">
+          {% if errors.impurity %}
+          <span class="error-text">{{ errors.impurity }}</span>
+          {% endif %}
+          <small style="color: var(--text-secondary);">参考标准：≤3%为合格</small>
+        </div>
+        <div class="form-group">
+          <label>水分含量（%）</label>
+          <input type="number" name="moisture" step="0.01" min="0" max="100"
+            value="{{ form_data.moisture if form_data else (harvest.moisture if harvest else '') }}"
+            placeholder="如：20.0">
+          {% if errors.moisture %}
+          <span class="error-text">{{ errors.moisture }}</span>
+          {% endif %}
+          <small style="color: var(--text-secondary);">参考标准：≤25%为合格</small>
+        </div>
+        <div class="form-group">
+          <label>黏度（s，涂-4杯）</label>
+          <input type="number" name="viscosity" step="0.1" min="0"
+            value="{{ form_data.viscosity if form_data else (harvest.viscosity if harvest else '') }}"
+            placeholder="如：45">
+          {% if errors.viscosity %}
+          <span class="error-text">{{ errors.viscosity }}</span>
+          {% endif %}
+          <small style="color: var(--text-secondary);">参考标准：≥30s为合格</small>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top: 1rem;">
         <div class="form-group full">
           <label>备注</label>
           <textarea name="remarks" maxlength="500"

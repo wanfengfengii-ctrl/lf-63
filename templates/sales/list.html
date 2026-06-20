@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}销售去向 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">💰 销售去向</h1>
+  <a href="/sales/new" class="btn btn-primary">+ 新增销售</a>
+</div>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="card stat-card">
+    <div class="stat-value">{{ stats.total_count }}</div>
+    <div class="stat-label">销售单数</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-value">{{ '%.2f'|format(stats.total_qty) }} kg</div>
+    <div class="stat-label">销售总量</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-value">¥ {{ '%.2f'|format(stats.total_amount) }}</div>
+    <div class="stat-label">销售总额</div>
+  </div>
+  <div class="card stat-card" style="border-left: 4px solid var(--warning);">
+    <div class="stat-value">¥ {{ '%.2f'|format(stats.unpaid_amount) }}</div>
+    <div class="stat-label">未收款</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+  <div class="card-body" style="padding: 0.75rem;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+      <span style="font-weight: 600;">收款状态：</span>
+      <a href="/sales" class="btn btn-sm {% if not filter_payment %}btn-primary{% else %}btn-outline{% endif %}">全部</a>
+      <a href="/sales?payment_status=未收款" class="btn btn-sm {% if filter_payment == '未收款' %}btn-primary{% else %}btn-outline{% endif %}">未收款</a>
+      <a href="/sales?payment_status=部分收款" class="btn btn-sm {% if filter_payment == '部分收款' %}btn-primary{% else %}btn-outline{% endif %}">部分收款</a>
+      <a href="/sales?payment_status=已收款" class="btn btn-sm {% if filter_payment == '已收款' %}btn-primary{% else %}btn-outline{% endif %}">已收款</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if sales %}
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>销售日期</th>
+            <th>批次编号</th>
+            <th>客户</th>
+            <th>销售数量</th>
+            <th>单价</th>
+            <th>总金额</th>
+            <th>去向/目的地</th>
+            <th>品质等级</th>
+            <th>责任人</th>
+            <th>收款状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sales %}
+          <tr>
+            <td>{{ s.sale_date.strftime('%Y-%m-%d') }}</td>
+            <td>
+              {% if s.inventory %}
+                <strong>{{ s.inventory.batch_no }}</strong>
+              {% else %}-{% endif %}
+            </td>
+            <td>{{ s.customer or '-' }}</td>
+            <td><strong>{{ '%.2f'|format(s.sale_quantity) }} kg</strong></td>
+            <td>¥ {{ '%.2f'|format(s.unit_price) }}</td>
+            <td><strong style="color: var(--primary);">¥ {{ '%.2f'|format(s.total_amount) }}</strong></td>
+            <td>{{ s.destination or '-' }}</td>
+            <td>
+              {% if s.quality_grade %}
+                {% if s.quality_grade == '特级' %}<span class="badge badge-success">{{ s.quality_grade }}</span>
+                {% elif s.quality_grade == '一级' %}<span class="badge badge-info">{{ s.quality_grade }}</span>
+                {% elif s.quality_grade == '二级' %}<span class="badge badge-warning">{{ s.quality_grade }}</span>
+                {% else %}<span class="badge badge-secondary">{{ s.quality_grade }}</span>{% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>{{ s.person_in_charge or '-' }}</td>
+            <td>
+              {% if s.payment_status == '已收款' %}<span class="badge badge-success">{{ s.payment_status }}</span>
+              {% elif s.payment_status == '部分收款' %}<span class="badge badge-warning">{{ s.payment_status }}</span>
+              {% else %}<span class="badge badge-danger">{{ s.payment_status }}</span>{% endif %}
+            </td>
+            <td class="action-col">
+              <a href="/sales/{{ s.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+              <form method="POST" action="/sales/{{ s.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该销售记录吗？库存将自动恢复。');">
+                <button type="submit" class="delete-btn">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">💰</div>
+      <div>暂无销售记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先入库后再进行销售登记</div>
+      <a href="/inventory" style="margin-top: 1rem;" class="btn btn-primary">前往库存管理</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

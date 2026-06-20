@@ -51,6 +51,10 @@ class HarvestBatch(Base):
     incision_id = Column(Integer, ForeignKey("incisions.id"), nullable=False)
     harvest_date = Column(Date, nullable=False)
     yield_amount = Column(Float, nullable=False)
+    color = Column(String(50))
+    impurity = Column(Float)
+    moisture = Column(Float)
+    viscosity = Column(Float)
     quality_grade = Column(String(20))
     weather_id = Column(Integer, ForeignKey("weather_conditions.id"))
     operator = Column(String(50))
@@ -59,6 +63,7 @@ class HarvestBatch(Base):
 
     incision = relationship("Incision", back_populates="harvests")
     weather = relationship("WeatherCondition")
+    inventory = relationship("LacquerInventory", back_populates="harvest", uselist=False, cascade="all, delete-orphan")
 
 
 class WeatherCondition(Base):
@@ -222,3 +227,59 @@ class SeasonalComparison(Base):
     labor_by_type = Column(Text)
     
     generated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LacquerInventory(Base):
+    __tablename__ = "lacquer_inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    harvest_id = Column(Integer, ForeignKey("harvest_batches.id"), nullable=False, unique=True)
+    batch_no = Column(String(50), unique=True, index=True)
+    storage_location = Column(String(200))
+    storage_date = Column(Date, nullable=False)
+    stock_quantity = Column(Float, default=0.0)
+    person_in_charge = Column(String(50))
+    status = Column(String(20), default="在库")
+    remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    harvest = relationship("HarvestBatch", back_populates="inventory")
+    sales = relationship("LacquerSale", back_populates="inventory", cascade="all, delete-orphan")
+
+
+class LacquerSale(Base):
+    __tablename__ = "lacquer_sales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    inventory_id = Column(Integer, ForeignKey("lacquer_inventory.id"), nullable=False)
+    sale_date = Column(Date, nullable=False)
+    customer = Column(String(100))
+    sale_quantity = Column(Float, nullable=False)
+    unit_price = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
+    destination = Column(String(200))
+    quality_grade = Column(String(20))
+    person_in_charge = Column(String(50))
+    payment_status = Column(String(20), default="未收款")
+    remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    inventory = relationship("LacquerInventory", back_populates="sales")
+
+
+class QualityAnalysis(Base):
+    __tablename__ = "quality_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    analysis_type = Column(String(50), nullable=False)
+    analysis_key = Column(String(100), nullable=False)
+    total_count = Column(Integer, default=0)
+    avg_yield = Column(Float, default=0.0)
+    grade_counts = Column(Text)
+    high_grade_rate = Column(Float, default=0.0)
+    avg_impurity = Column(Float, default=0.0)
+    avg_moisture = Column(Float, default=0.0)
+    avg_viscosity = Column(Float, default=0.0)
+    details = Column(Text)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

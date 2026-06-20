@@ -10,52 +10,91 @@
 <div class="card">
   <div class="card-body" style="padding: 0;">
     {% if harvests %}
-    <table>
-      <thead>
-        <tr>
-          <th>采收日期</th>
-          <th>所属漆树</th>
-          <th>割口编号</th>
-          <th>割口方式</th>
-          <th>出漆量</th>
-          <th>品质等级</th>
-          <th>天气</th>
-          <th>操作员</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for h in harvests %}
-        <tr>
-          <td>{{ h.harvest_date.strftime('%Y-%m-%d') }}</td>
-          <td><a href="/trees/{{ h.incision.tree.id }}">{{ h.incision.tree.tree_code }}</a></td>
-          <td>{{ h.incision.incision_code }}</td>
-          <td>{{ h.incision.method }}</td>
-          <td><strong>{{ '%.2f'|format(h.yield_amount) }} kg</strong></td>
-          <td>
-            {% if h.quality_grade %}
-              {% if h.quality_grade == '特级' %}<span class="badge badge-success">{{ h.quality_grade }}</span>
-              {% elif h.quality_grade == '一级' %}<span class="badge badge-info">{{ h.quality_grade }}</span>
-              {% elif h.quality_grade == '二级' %}<span class="badge badge-warning">{{ h.quality_grade }}</span>
-              {% else %}<span class="badge badge-secondary">{{ h.quality_grade }}</span>{% endif %}
-            {% else %}-{% endif %}
-          </td>
-          <td>
-            {% if h.weather %}
-              {{ h.weather.weather_type or '' }} {{ h.weather.temperature or '' }}{{ '°C' if h.weather.temperature else '' }}
-            {% else %}-{% endif %}
-          </td>
-          <td>{{ h.operator or '-' }}</td>
-          <td class="action-col">
-            <a href="/harvests/{{ h.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
-            <form method="POST" action="/harvests/{{ h.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该采收记录吗？相关产量统计将重新计算。');">
-              <button type="submit" class="delete-btn">删除</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>采收日期</th>
+            <th>所属漆树</th>
+            <th>割口编号</th>
+            <th>割口方式</th>
+            <th>出漆量</th>
+            <th>颜色</th>
+            <th>杂质(%)</th>
+            <th>水分(%)</th>
+            <th>黏度(s)</th>
+            <th>品质等级</th>
+            <th>天气</th>
+            <th>操作员</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in harvests %}
+          <tr>
+            <td>{{ h.harvest_date.strftime('%Y-%m-%d') }}</td>
+            <td><a href="/trees/{{ h.incision.tree.id }}">{{ h.incision.tree.tree_code }}</a></td>
+            <td>{{ h.incision.incision_code }}</td>
+            <td>{{ h.incision.method }}</td>
+            <td><strong>{{ '%.2f'|format(h.yield_amount) }} kg</strong></td>
+            <td>{{ h.color or '-' }}</td>
+            <td>
+              {% if h.impurity is not none %}
+                {% if h.impurity > 3 %}
+                  <span style="color: var(--danger);"><strong>{{ '%.2f'|format(h.impurity) }}</strong></span>
+                {% else %}
+                  {{ '%.2f'|format(h.impurity) }}
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if h.moisture is not none %}
+                {% if h.moisture > 25 %}
+                  <span style="color: var(--danger);"><strong>{{ '%.2f'|format(h.moisture) }}</strong></span>
+                {% else %}
+                  {{ '%.2f'|format(h.moisture) }}
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if h.viscosity is not none %}
+                {% if h.viscosity < 30 %}
+                  <span style="color: var(--danger);"><strong>{{ '%.1f'|format(h.viscosity) }}</strong></span>
+                {% else %}
+                  {{ '%.1f'|format(h.viscosity) }}
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if h.quality_grade %}
+                {% if h.quality_grade == '特级' %}<span class="badge badge-success">{{ h.quality_grade }}</span>
+                {% elif h.quality_grade == '一级' %}<span class="badge badge-info">{{ h.quality_grade }}</span>
+                {% elif h.quality_grade == '二级' %}<span class="badge badge-warning">{{ h.quality_grade }}</span>
+                {% else %}<span class="badge badge-secondary">{{ h.quality_grade }}</span>{% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if h.weather %}
+                {{ h.weather.weather_type or '' }} {{ h.weather.temperature or '' }}{{ '°C' if h.weather.temperature else '' }}
+              {% else %}-{% endif %}
+            </td>
+            <td>{{ h.operator or '-' }}</td>
+            <td class="action-col">
+              {% if not h.inventory %}
+              <a href="/inventory/new?harvest_id={{ h.id }}" class="btn btn-sm btn-success" style="background: var(--success);">📦 入库</a>
+              {% else %}
+              <span class="badge badge-info">已入库</span>
+              {% endif %}
+              <a href="/harvests/{{ h.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+              <form method="POST" action="/harvests/{{ h.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该采收记录吗？相关产量统计将重新计算。');">
+                <button type="submit" class="delete-btn">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <div class="empty-state">
       <div class="icon">🧪</div>

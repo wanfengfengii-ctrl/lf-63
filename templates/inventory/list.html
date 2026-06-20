@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}库存管理 - 漆树采收管理系统{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1 class="page-title">📦 库存管理</h1>
+  <a href="/inventory/new" class="btn btn-primary">+ 新增入库</a>
+</div>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="card stat-card">
+    <div class="stat-value">{{ stats.total_count }}</div>
+    <div class="stat-label">库存批次</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-value">{{ '%.2f'|format(stats.total_stock) }} kg</div>
+    <div class="stat-label">当前库存</div>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-value">¥ {{ '%.2f'|format(stats.total_value) }}</div>
+    <div class="stat-label">库存估值</div>
+  </div>
+  {% for status, count in stats.status_counts.items() %}
+  <div class="card stat-card">
+    <div class="stat-value">{{ count }}</div>
+    <div class="stat-label">{{ status }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-bottom: 1rem;">
+  <div class="card-body" style="padding: 0.75rem;">
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+      <span style="font-weight: 600;">状态筛选：</span>
+      <a href="/inventory" class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline{% endif %}">全部</a>
+      <a href="/inventory?status=在库" class="btn btn-sm {% if filter_status == '在库' %}btn-primary{% else %}btn-outline{% endif %}">在库</a>
+      <a href="/inventory?status=部分出库" class="btn btn-sm {% if filter_status == '部分出库' %}btn-primary{% else %}btn-outline{% endif %}">部分出库</a>
+      <a href="/inventory?status=已售罄" class="btn btn-sm {% if filter_status == '已售罄' %}btn-primary{% else %}btn-outline{% endif %}">已售罄</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    {% if inventories %}
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>批次编号</th>
+            <th>漆树</th>
+            <th>割口</th>
+            <th>采收日期</th>
+            <th>入库日期</th>
+            <th>存放位置</th>
+            <th>当前库存</th>
+            <th>品质等级</th>
+            <th>状态</th>
+            <th>责任人</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in inventories %}
+          <tr>
+            <td><strong>{{ inv.batch_no }}</strong></td>
+            <td>
+              {% if inv.harvest %}
+                <a href="/trees/{{ inv.harvest.incision.tree.id }}">{{ inv.harvest.incision.tree.tree_code }}</a>
+              {% else %}-{% endif %}
+            </td>
+            <td>{% if inv.harvest %}{{ inv.harvest.incision.incision_code }}{% else %}-{% endif %}</td>
+            <td>{% if inv.harvest %}{{ inv.harvest.harvest_date.strftime('%Y-%m-%d') }}{% else %}-{% endif %}</td>
+            <td>{{ inv.storage_date.strftime('%Y-%m-%d') }}</td>
+            <td>{{ inv.storage_location or '-' }}</td>
+            <td><strong>{{ '%.2f'|format(inv.stock_quantity) }} kg</strong></td>
+            <td>
+              {% if inv.harvest and inv.harvest.quality_grade %}
+                {% if inv.harvest.quality_grade == '特级' %}<span class="badge badge-success">{{ inv.harvest.quality_grade }}</span>
+                {% elif inv.harvest.quality_grade == '一级' %}<span class="badge badge-info">{{ inv.harvest.quality_grade }}</span>
+                {% elif inv.harvest.quality_grade == '二级' %}<span class="badge badge-warning">{{ inv.harvest.quality_grade }}</span>
+                {% else %}<span class="badge badge-secondary">{{ inv.harvest.quality_grade }}</span>{% endif %}
+              {% else %}-{% endif %}
+            </td>
+            <td>
+              {% if inv.status == '在库' %}<span class="badge badge-success">{{ inv.status }}</span>
+              {% elif inv.status == '部分出库' %}<span class="badge badge-info">{{ inv.status }}</span>
+              {% elif inv.status == '已售罄' %}<span class="badge badge-secondary">{{ inv.status }}</span>
+              {% else %}<span class="badge badge-warning">{{ inv.status }}</span>{% endif %}
+            </td>
+            <td>{{ inv.person_in_charge or '-' }}</td>
+            <td class="action-col">
+              {% if inv.stock_quantity > 0 %}
+              <a href="/sales/new?inventory_id={{ inv.id }}" class="btn btn-sm btn-info" style="background: var(--info);">💰 出售</a>
+              {% endif %}
+              <a href="/inventory/{{ inv.id }}/edit" class="btn btn-outline btn-sm">编辑</a>
+              <form method="POST" action="/inventory/{{ inv.id }}/delete" class="inline-form" onsubmit="return confirm('确定要删除该库存记录吗？关联的销售记录也将被删除。');">
+                <button type="submit" class="delete-btn">删除</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="icon">📦</div>
+      <div>暂无库存记录</div>
+      <div style="margin-top: 0.5rem; font-size: 0.85rem;">请先录入采收记录后进行入库操作</div>
+      <a href="/harvests" style="margin-top: 1rem;" class="btn btn-primary">前往采收记录</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

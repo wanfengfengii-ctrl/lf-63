@@ -65,6 +65,10 @@ class HarvestBase(BaseModel):
     incision_id: int
     harvest_date: date
     yield_amount: float
+    color: Optional[str] = None
+    impurity: Optional[float] = None
+    moisture: Optional[float] = None
+    viscosity: Optional[float] = None
     quality_grade: Optional[str] = None
     weather_id: Optional[int] = None
     operator: Optional[str] = None
@@ -77,6 +81,13 @@ class HarvestBase(BaseModel):
             raise ValueError("出漆量不能为负数")
         return v
 
+    @field_validator("impurity", "moisture", "viscosity")
+    @classmethod
+    def quality_params_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("参数不能为负数")
+        return v
+
 
 class HarvestCreate(HarvestBase):
     pass
@@ -87,6 +98,78 @@ class HarvestUpdate(HarvestBase):
 
 
 class Harvest(HarvestBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryBase(BaseModel):
+    harvest_id: int
+    batch_no: str
+    storage_location: Optional[str] = None
+    storage_date: date
+    stock_quantity: Optional[float] = 0.0
+    person_in_charge: Optional[str] = None
+    status: Optional[str] = "在库"
+    remarks: Optional[str] = None
+
+    @field_validator("stock_quantity")
+    @classmethod
+    def quantity_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("库存数量不能为负数")
+        return v
+
+
+class InventoryCreate(InventoryBase):
+    pass
+
+
+class InventoryUpdate(InventoryBase):
+    pass
+
+
+class Inventory(InventoryBase):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class SaleBase(BaseModel):
+    inventory_id: int
+    sale_date: date
+    customer: Optional[str] = None
+    sale_quantity: float
+    unit_price: Optional[float] = 0.0
+    total_amount: Optional[float] = 0.0
+    destination: Optional[str] = None
+    quality_grade: Optional[str] = None
+    person_in_charge: Optional[str] = None
+    payment_status: Optional[str] = "未收款"
+    remarks: Optional[str] = None
+
+    @field_validator("sale_quantity", "unit_price", "total_amount")
+    @classmethod
+    def values_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("参数不能为负数")
+        return v
+
+
+class SaleCreate(SaleBase):
+    pass
+
+
+class SaleUpdate(SaleBase):
+    pass
+
+
+class Sale(SaleBase):
     id: int
     created_at: Optional[datetime] = None
 
